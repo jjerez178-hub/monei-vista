@@ -1145,7 +1145,7 @@ transactionForm=function(type,id,draft){
 document.addEventListener('click',e=>{const button=e.target.closest('button[data-diary-person]');if(!button)return;if(diaryPerson===button.dataset.diaryPerson)return;animateLedger(()=>{diaryPerson=button.dataset.diaryPerson;render();});});
 const diaryRender=render;
 render=function(){diaryRender();document.querySelector('.app').dataset.page=route;document.querySelector('.page-top').inert=route==='home';positionNav();};
-document.querySelector('.wordmark').innerHTML='monei<span class="edition">DEMO</span>';
+document.querySelector('.wordmark').innerHTML='monei<span class="edition">V2 · 9 SEP</span>';
 document.title='Monei · Tu día a día';
 render();
 
