@@ -690,7 +690,18 @@ body[data-appearance=terracota] .app,body[data-appearance=terracota] dialog,body
 h2.settings-h2{margin:6px 0 14px}
 html.no-popover #quick-menu:not(.pf-open){display:none}
 html.no-popover #quick-menu.pf-open{opacity:1;transform:none}
+
+/* ===== Capa nube (9-sep-2026) ===== */
+.login-form label{display:block;font-size:12px;font-weight:500;margin:16px 0 7px}
+.login-form input{display:block;width:100%;min-height:46px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:11px 12px;font-size:16px}
+.login-form .primary{width:100%;margin-top:20px}
+.login-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-weight:500;font-size:13px}
+.login-note{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.6}
+.login-error{font-size:12px;padding:12px;border:1px solid var(--line);background:var(--tint);border-radius:10px;margin-top:14px}
+.sync-note{font-size:12px;color:var(--muted);margin-top:12px}
 </style></head><body><script>
+/* oauth hash (9-sep-2026): Supabase vuelve con #access_token=…; se guarda y se limpia antes de que el router lo lea */
+try{if(location.hash.indexOf('access_token=')>=0){sessionStorage.setItem('sb-hash',location.hash.slice(1));history.replaceState(null,'',location.pathname+'#home');}}catch(e){}
 /* compat.js (9-sep-2026): Safari/iOS antiguos. Va ANTES de todo lo demás, sin 'use strict' para poder rellenar prototipos. */
 (function(){
  if(!Object.hasOwn)Object.defineProperty(Object,'hasOwn',{value:function(o,k){return Object.prototype.hasOwnProperty.call(Object(o),k);},configurable:true,writable:true});
@@ -1393,5 +1404,112 @@ if(location.protocol==='file:'){
  const restored=loadState();
  if(!restored){people[0].name='Jorge';people[1].name='Heiry';}
  render();
+})();
+</script><script>
+/* cloud.js (9-sep-2026): sesión Supabase compartida con la app anterior, importación de sus datos y sincronización. */
+'use strict';
+(()=>{
+ const SB_URL='https://zbfwopxfcpqyjdhagyox.supabase.co';
+ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiZndvcHhmY3BxeWpkaGFneW94Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1ODMwNDQsImV4cCI6MjA4ODE1OTA0NH0.dQV1Yt1Qf0aTUBZpOWyvStuNKlbUd-AbLRKXY0h1uRA';
+ let session=null,cloudLoaded=false,saveTimer=null,lastCloudJson='',syncInfo='';
+ const jwtExp=t=>{try{return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).exp*1000;}catch{return 0;}};
+ const readSession=()=>{try{return JSON.parse(localStorage.getItem('sb-s')||sessionStorage.getItem('sb-s')||'null');}catch{return null;}};
+ const writeSession=v=>{try{localStorage.setItem('sb-s',JSON.stringify(v));}catch{}};
+ const authHeaders=()=>({apikey:SB_KEY,'Content-Type':'application/json'});
+ async function refresh(){if(!session?.refresh_token)return false;try{const r=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:authHeaders(),body:JSON.stringify({refresh_token:session.refresh_token})});const d=await r.json();if(d.access_token){session={access_token:d.access_token,refresh_token:d.refresh_token||session.refresh_token,user:d.user||session.user};writeSession(session);return true;}}catch{}return false;}
+ async function api(path,opts={},retry=true){const r=await fetch(SB_URL+'/rest/v1/'+path,{...opts,headers:{...authHeaders(),Authorization:'Bearer '+session.access_token,...(opts.headers||{})}});if(r.status===401&&retry&&await refresh())return api(path,opts,false);return r;}
+ const uid=()=>session?.user?.id;
+
+ /* --- importación desde la app anterior (public.user_state) --- */
+ const centsOf=n=>Math.round(Number(n)*100);
+ function importClasica(d){
+  const names=(d.personas||[]).map(p=>String(p.name||'').trim()).filter(Boolean);
+  if(names[0])people[0].name=names[0];if(names[1])people[1].name=names[1];
+  const personaOf=v=>{v=String(v||'').trim();if(!v)return 'shared';if(v===people[0].name)return 'me';if(v===people[1].name)return 'partner';return 'shared';};
+  const txs=(d.txns||[]).filter(t=>t&&t.date&&!t.isTransfer&&Number.isFinite(Number(t.amount))&&Number(t.amount)!==0).map(t=>{
+   const raw=Number(t.amount),amt=Math.abs(raw),usd=t.originalUSD!=null&&Number(t.originalUSD)>0;
+   const rate=usd?(Number(t.rate)>0?Number(t.rate):amt/Number(t.originalUSD)):1;
+   const dop=centsOf(amt),native=usd?centsOf(t.originalUSD):dop,expense=raw<0;
+   return {id:String(t.id),type:expense?'expense':'income',name:String(t.desc||t.cat||'Movimiento').slice(0,100),native,dop,currency:usd?'USD':'DOP',rate,date:String(t.date).slice(0,10),category:String(t.cat||'Otro'),...(expense?{person:personaOf(t.persona)}:{}),account:'',...(t.source?{source:String(t.source)}:{})};
+  });
+  const seen=new Set(),bs=[];
+  for(const b of (d.budgets||[])){if(!b||!b.cat||seen.has(String(b.cat)))continue;seen.add(String(b.cat));bs.push({id:String(b.id),category:String(b.cat),limit:Math.max(0,centsOf(b.budget||0))});}
+  const exp=[...new Set([...(d.prefs?.expCats||[]),...txs.filter(t=>t.type==='expense').map(t=>t.category),...bs.map(b=>b.category)].map(String).filter(Boolean))];
+  const inc=[...new Set([...(d.prefs?.incCats||[]),...txs.filter(t=>t.type==='income').map(t=>t.category)].map(String).filter(Boolean))];
+  transactions=txs;budgets=bs;
+  if(exp.length){categories.splice(0,categories.length,...exp);customCategories.clear();exp.forEach(c=>customCategories.add(c));}
+  if(inc.length)incomeTypes.splice(0,incomeTypes.length,...inc);
+  archivedExpenseTypes.clear();archivedIncomeTypes.clear();
+  const lim={};for(const b of (d.budgets||[])){const who=personaOf(b.persona);if(b.persona&&(who==='me'||who==='partner'))lim[who]=centsOf(b.budget||0);}
+  if(Object.keys(lim).length){personalLimits[month]={...(personalLimits[month]||{}),...lim};}
+  if(!categories.includes(selectedCategory))selectedCategory=categories[0];
+  return {txns:txs.length,budgets:bs.length};
+ }
+ /* límite personal: si el mes no tiene, hereda el último mes configurado */
+ const personalStatusBefore=personalStatus;
+ personalStatus=function(id,period=month){if(personalLimits[period]?.[id]===undefined){const ms=Object.keys(personalLimits).filter(m=>m<=period&&personalLimits[m]?.[id]!==undefined).sort();if(ms.length){const s=personalStatusBefore(id,ms[ms.length-1]);const spent=transactions.filter(t=>t.type==='expense'&&t.date.startsWith(period)&&personOf(t)===id).reduce((n,t)=>n+t.dop,0);return allowanceStatus(s.limit,spent);}}return personalStatusBefore(id,period);};
+
+ /* --- estado en la nube (public.vista_state) --- */
+ const stateSnapshot=()=>({v:1,savedAt:Date.now(),transactions,budgets,recurring,accounts,categories:[...categories],customCategories:[...customCategories],archivedExpenseTypes:[...archivedExpenseTypes],incomeTypes:[...incomeTypes],archivedIncomeTypes:[...archivedIncomeTypes],people:people.map(p=>({id:p.id,name:p.name})),personalLimits,typeBudgetMap:window.moneiTypeBudget.map});
+ function applyCloud(st){
+  transactions=st.transactions||[];budgets=st.budgets||[];recurring=st.recurring||[];
+  accounts.splice(0,accounts.length,...(st.accounts||[]));
+  if(Array.isArray(st.categories)&&st.categories.length)categories.splice(0,categories.length,...st.categories);
+  customCategories.clear();(st.customCategories||[]).forEach(c=>customCategories.add(c));
+  archivedExpenseTypes.clear();(st.archivedExpenseTypes||[]).forEach(c=>archivedExpenseTypes.add(c));
+  if(Array.isArray(st.incomeTypes)&&st.incomeTypes.length)incomeTypes.splice(0,incomeTypes.length,...st.incomeTypes);
+  archivedIncomeTypes.clear();(st.archivedIncomeTypes||[]).forEach(c=>archivedIncomeTypes.add(c));
+  (st.people||[]).forEach(sp=>{const p=people.find(p=>p.id===sp.id);if(p&&sp.name)p.name=sp.name;});
+  Object.keys(personalLimits).forEach(k=>delete personalLimits[k]);Object.assign(personalLimits,st.personalLimits||{});
+  const map=window.moneiTypeBudget.map;Object.keys(map).forEach(k=>delete map[k]);Object.assign(map,st.typeBudgetMap||{});
+  if(!categories.includes(selectedCategory))selectedCategory=categories[0];
+ }
+ async function cloudSave(){if(!session||!cloudLoaded)return;const snap=stateSnapshot();const j=JSON.stringify(snap);if(j===lastCloudJson)return;try{const body=JSON.stringify({user_id:uid(),data:snap});const r=await api('vista_state',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body,keepalive:body.length<60000});if(r.ok){lastCloudJson=j;syncInfo='Sincronizado '+new Date().toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'});}else{syncInfo='Sin sincronizar (HTTP '+r.status+')';}}catch(e){syncInfo='Sin conexión: se guardó en el dispositivo';}}
+ const scheduleSave=()=>{if(!session)return;clearTimeout(saveTimer);saveTimer=setTimeout(cloudSave,1200);};
+ async function cloudLoad(){
+  const r=await api('vista_state?user_id=eq.'+uid()+'&select=data,updated_at');
+  if(!r.ok)throw Error('vista_state HTTP '+r.status);
+  const rows=await r.json();
+  if(rows.length&&rows[0].data&&Array.isArray(rows[0].data.transactions)){applyCloud(rows[0].data);lastCloudJson=JSON.stringify(stateSnapshot());cloudLoaded=true;syncInfo='Sincronizado';render();return 'cloud';}
+  const r2=await api('user_state?user_id=eq.'+uid()+'&select=data&order=updated_at.desc&limit=1');
+  const old=r2.ok?await r2.json():[];
+  cloudLoaded=true;
+  if(old.length&&old[0].data){const n=importClasica(old[0].data);render();await cloudSave();toast('Importados '+n.txns+' movimientos y '+n.budgets+' presupuestos de tu app anterior.');return 'imported';}
+  await cloudSave();return 'empty';
+ }
+ window.moneiCloud={get session(){return session;},load:cloudLoad,save:cloudSave,importClasica};
+
+ /* --- sesión --- */
+ async function finishHash(){let raw=null;try{raw=sessionStorage.getItem('sb-hash');sessionStorage.removeItem('sb-hash');}catch{}if(!raw)return false;const p=new URLSearchParams(raw);const t=p.get('access_token');if(!t)return false;const r=await fetch(SB_URL+'/auth/v1/user',{headers:{apikey:SB_KEY,Authorization:'Bearer '+t}});if(!r.ok)return false;const user=await r.json();session={access_token:t,refresh_token:p.get('refresh_token'),user};writeSession(session);return true;}
+ async function ensureSession(){
+  if(await finishHash())return true;
+  const s=readSession();if(!s?.access_token)return false;
+  session=s;
+  if(jwtExp(s.access_token)-Date.now()<60000){if(!(await refresh())){session=null;return false;}}
+  if(!session.user){const r=await fetch(SB_URL+'/auth/v1/user',{headers:{apikey:SB_KEY,Authorization:'Bearer '+session.access_token}});if(r.ok){session.user=await r.json();writeSession(session);}else{session=null;return false;}}
+  return true;
+ }
+ function loginSheet(error){
+  openSheet('Entrar a Monei',`<form class="login-form" id="login-form"><label for="l-email">Correo</label><input id="l-email" name="email" type="email" autocomplete="username" required inputmode="email"><label for="l-pass">Contraseña</label><input id="l-pass" name="password" type="password" autocomplete="current-password" required>${error?`<div class="login-error" role="alert">${esc(error)}</div>`:''}<button class="primary" type="submit">Entrar</button><button class="login-google" type="button" id="login-google"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.3 2-1.6 5-4.6 7l7 5.4c4.2-3.9 6.6-9.6 6.6-15.7z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.6-5.4l-7-5.4c-1.9 1.3-4.5 2.2-7.6 2.2-5.9 0-10.8-4-12.6-9.3l-7.3 5.6C7.6 41 15.2 46 24 46z"/><path fill="#FBBC05" d="M11.4 28.1c-.5-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-7.3-5.6C2.7 17.1 2 20.4 2 24s.7 6.9 2.1 9.7l7.3-5.6z"/><path fill="#EA4335" d="M24 10.6c3.3 0 5.6 1.4 6.9 2.6l6.2-6.1C33.5 3.7 29.3 2 24 2 15.2 2 7.6 7 4.1 14.3l7.3 5.6c1.8-5.3 6.7-9.3 12.6-9.3z"/></svg>Continuar con Google</button><p class="login-note">La misma cuenta de tu Monei anterior. Al entrar, tus movimientos y presupuestos se cargan aquí y todo lo nuevo se guarda en tu cuenta.</p><button class="link" type="button" id="login-skip">Seguir sin cuenta (solo este dispositivo)</button></form>`);
+  $('#sheet').dataset.theme=resolveTheme();sheetBaseline=formSignature();
+  $('#login-form').onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('.primary');b.disabled=true;b.textContent='Entrando…';try{const r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:authHeaders(),body:JSON.stringify({email:$('#l-email').value.trim(),password:$('#l-pass').value})});const d=await r.json();if(!d.access_token)throw Error(d.error_description||d.msg||d.message||'No se pudo entrar. Revisa el correo y la contraseña.');session={access_token:d.access_token,refresh_token:d.refresh_token,user:d.user};writeSession(session);sheetSaved=true;closeSheet();await boot();}catch(err){loginSheet(err.message);}};
+  $('#login-google').onclick=()=>{try{localStorage.setItem('sb-remember','1');}catch{}location.href=SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname);};
+  $('#login-skip').onclick=()=>{sheetSaved=true;closeSheet();};
+ }
+ function paintAccount(){const av=document.querySelector('.top .avatar');if(!av)return;const e=session?.user?.email||'';av.textContent=e?e.slice(0,2).toUpperCase():'JJ';av.title=e||'';}
+ async function boot(){try{if(!(await ensureSession())){loginSheet();return;}paintAccount();const how=await cloudLoad();if(how==='cloud')toast('Datos cargados de tu cuenta.');}catch(e){console.warn(e);toast('No se pudo cargar de tu cuenta: '+e.message);}}
+
+ /* ajustes: cuenta, sincronización, reimportar */
+ const settingsBeforeCloud=views.settings;
+ views.settings=()=>settingsBeforeCloud().replace('<div class="muted-box">',`<h2 class="settings-h2">Tu cuenta</h2><div class="rows settings-rows">${session?`<div class="row"><span class="row-main"><b>${esc(session.user?.email||'Sesión activa')}</b><span class="sub">${esc(syncInfo||'Conectado')}</span></span></div><button class="row settings-row" data-action="cloud-reimport"><span class="row-main"><b>Volver a importar de la app anterior</b><span class="sub">Reemplaza movimientos y presupuestos con los de tu Monei anterior</span></span>${icon('arrow')}</button><button class="row settings-row" data-action="cloud-logout"><span class="row-main"><b>Cerrar sesión</b><span class="sub">Los datos quedan en tu cuenta</span></span>${icon('close')}</button>`:`<button class="row settings-row" data-action="cloud-login"><span class="row-main"><b>Entrar con tu cuenta</b><span class="sub">Carga tus movimientos y guarda en la nube</span></span>${icon('arrow')}</button>`}</div><div class="muted-box">`)
+  .replace('Tus cambios se guardan en este dispositivo (sin cuenta ni nube). Restablecer borra lo tuyo y vuelve a los datos de ejemplo.',session?'Tus cambios se guardan en tu cuenta y en este dispositivo.':'Sin sesión: los cambios se guardan solo en este dispositivo.');
+ actions['cloud-login']=()=>loginSheet();
+ actions['cloud-logout']=()=>{if(!confirm('¿Cerrar sesión en este dispositivo?'))return;try{localStorage.removeItem('sb-s');sessionStorage.removeItem('sb-s');localStorage.removeItem('monei-state-v2');}catch{}location.reload();};
+ actions['cloud-reimport']=async()=>{if(!session)return;if(!confirm('Se reemplazan los movimientos y presupuestos de aquí con los de tu Monei anterior. ¿Continuar?'))return;try{const r=await api('user_state?user_id=eq.'+uid()+'&select=data&order=updated_at.desc&limit=1');const old=r.ok?await r.json():[];if(!old.length)throw Error('No hay datos en la app anterior.');const n=importClasica(old[0].data);render();await cloudSave();toast('Importados '+n.txns+' movimientos y '+n.budgets+' presupuestos.');}catch(e){toast('No se pudo importar: '+e.message);}};
+
+ const renderBeforeCloud=render;
+ render=function(){renderBeforeCloud();scheduleSave();};
+ addEventListener('pagehide',()=>{if(session&&cloudLoaded)cloudSave();});
+ boot();
 })();
 </script></body></html>
