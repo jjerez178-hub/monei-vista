@@ -699,6 +699,23 @@ html.no-popover #quick-menu.pf-open{opacity:1;transform:none}
 .login-note{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.6}
 .login-error{font-size:12px;padding:12px;border:1px solid var(--line);background:var(--tint);border-radius:10px;margin-top:14px}
 .sync-note{font-size:12px;color:var(--muted);margin-top:12px}
+
+/* ===== Capa Email Sync (9-sep-2026) ===== */
+.sync-status .row-main b{font-size:14px}
+.sync-actions{display:grid;grid-template-columns:1fr;gap:10px;margin:16px 0 8px}
+.sync-period{display:flex;gap:6px;margin:14px 0 4px}
+.sync-period button{flex:1;min-height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-size:13px}
+.sync-period button[aria-pressed=true]{background:var(--soft);font-weight:600;box-shadow:inset 0 0 0 1px var(--line)}
+.sync-log{max-height:320px;overflow:auto;scrollbar-width:thin}
+.sync-log .row{min-height:44px;padding:10px 16px;gap:10px;align-items:flex-start}
+.sync-log .row .sub{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.sync-log .row-icon{width:28px;height:28px;border-radius:9px;font-size:14px}
+.sender-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.sender-chips span{font-size:12px;padding:6px 10px;border-radius:999px;background:var(--soft)}
+.sender-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px}
+.sender-add input,.cid-row input{min-height:46px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:16px;background:var(--surface);color:var(--text);width:100%}
+.cid-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
+.gmail-card .primary{width:100%;min-height:48px;margin-top:6px}
 </style></head><body><script>
 /* oauth hash (9-sep-2026): Supabase vuelve con #access_token=…; se guarda y se limpia antes de que el router lo lea */
 try{if(location.hash.indexOf('access_token=')>=0){sessionStorage.setItem('sb-hash',location.hash.slice(1));history.replaceState(null,'',location.pathname+'#home');}}catch(e){}
@@ -1318,13 +1335,13 @@ if(location.protocol==='file:'){
  const typeBudgetMap={};
  let resetting=false,lastSaved='';
  const budgetById=id=>budgets.find(b=>b.id===id);
- const resolveBudgetId=type=>{const m=typeBudgetMap[type];if(m==='none')return null;if(m&&budgetById(m))return m;return budgets.find(b=>b.category===type)?.id??null;};
+ const personBudget=pid=>{if(pid!=='me'&&pid!=='partner')return null;const p=people.find(x=>x.id===pid);if(!p)return null;const nm=String(p.name||'').trim().toLowerCase();if(!nm)return null;return budgets.find(b=>String(b.persona||'').trim().toLowerCase()===nm)||budgets.find(b=>String(b.category||'').trim().toLowerCase()==='mesada '+nm)||null;};const mapKey=(type,pid)=>(pid==='me'||pid==='partner')?type+'@'+pid:type;const resolveBudgetId=(type,pid)=>{const personal=pid==='me'||pid==='partner';const m=typeBudgetMap[mapKey(type,pid)];if(m==='none')return null;if(m&&budgetById(m))return m;if(personal){const pb=personBudget(pid);if(pb)return pb.id;}return budgets.find(b=>b.category===type)?.id??budgets.find(b=>/^otr[oa]s?$/i.test(String(b.category).trim()))?.id??null;};
  const resolvedName=type=>{const id=resolveBudgetId(type);return id?budgetById(id).category:null;};
- window.moneiTypeBudget={map:typeBudgetMap,resolve:resolveBudgetId};
- assignedBudget=function(t){if(t.budgetId!==undefined)return t.budgetId===null?undefined:budgetById(t.budgetId);const id=resolveBudgetId(t.category);return id?budgetById(id):undefined;};
+ window.moneiTypeBudget={map:typeBudgetMap,resolve:resolveBudgetId,personBudget,mapKey};
+ assignedBudget=function(t){if(t.budgetId!==undefined)return t.budgetId===null?undefined:budgetById(t.budgetId);const id=resolveBudgetId(t.category,t.person);return id?budgetById(id):undefined;};
 
  /* --- estado en el dispositivo --- */
- const snapshot=()=>({v:1,savedAt:Date.now(),transactions,budgets,recurring,accounts,categories:[...categories],customCategories:[...customCategories],archivedExpenseTypes:[...archivedExpenseTypes],incomeTypes:[...incomeTypes],archivedIncomeTypes:[...archivedIncomeTypes],people:people.map(p=>({id:p.id,name:p.name})),personalLimits,typeBudgetMap});
+ const snapshot=()=>({v:1,savedAt:Date.now(),transactions,budgets,recurring,accounts,categories:[...categories],customCategories:[...customCategories],archivedExpenseTypes:[...archivedExpenseTypes],incomeTypes:[...incomeTypes],archivedIncomeTypes:[...archivedIncomeTypes],people:people.map(p=>({id:p.id,name:p.name})),personalLimits,typeBudgetMap,extra:window.moneiExtra||{}});
  function saveState(){if(resetting)return;try{const j=JSON.stringify(snapshot());if(j!==lastSaved){localStorage.setItem(STATE_KEY,j);lastSaved=j;}}catch(e){console.warn('No se pudo guardar el estado',e);}}
  function loadState(){let st;try{st=JSON.parse(localStorage.getItem(STATE_KEY));}catch{return false;}if(!st||st.v!==1||!Array.isArray(st.transactions)||!Array.isArray(st.budgets))return false;
   transactions=st.transactions;budgets=st.budgets;if(Array.isArray(st.recurring))recurring=st.recurring;
@@ -1337,6 +1354,7 @@ if(location.protocol==='file:'){
   (st.people||[]).forEach(sp=>{const p=people.find(p=>p.id===sp.id);if(p&&typeof sp.name==='string'&&sp.name.trim())p.name=sp.name;});
   Object.keys(personalLimits).forEach(k=>delete personalLimits[k]);Object.assign(personalLimits,st.personalLimits||{});
   Object.assign(typeBudgetMap,st.typeBudgetMap||{});
+  window.moneiExtra=Object.assign(window.moneiExtra||{},st.extra||{});
   if(!categories.includes(selectedCategory))selectedCategory=categories[0];
   return true;}
  const renderBeforeState=render;
@@ -1354,9 +1372,9 @@ if(location.protocol==='file:'){
  function preSave(v,ctx){
   if(!('budget_assignment' in v)||!v.category)return;
   const chosen=v.budget_assignment;if(chosen==='auto')return;
-  const want=chosen===''?null:chosen,resolved=resolveBudgetId(v.category);
+  const want=chosen===''?null:chosen,resolved=resolveBudgetId(v.category,v.person);
   if(want===resolved){v.budget_assignment='auto';return;}
-  if(v.remember_budget==='on'){typeBudgetMap[v.category]=want??'none';v.budget_assignment='auto';ctx.learned={type:v.category,name:want?budgetById(want)?.category:null};}
+  if(v.remember_budget==='on'){typeBudgetMap[mapKey(v.category,v.person)]=want??'none';v.budget_assignment='auto';ctx.learned={type:v.category+((v.person==='me'||v.person==='partner')?' de '+personName(v.person):''),name:want?budgetById(want)?.category:null};}
  }
  function postSave(v,ctx){
   if(ctx.title==='Editar categoría'&&ctx.oldName&&v.name){const nn=v.name.trim().replace(/\s+/g,' ');if(nn!==ctx.oldName&&Object.hasOwn(typeBudgetMap,ctx.oldName)){typeBudgetMap[nn]=typeBudgetMap[ctx.oldName];delete typeBudgetMap[ctx.oldName];}}
@@ -1373,17 +1391,18 @@ if(location.protocol==='file:'){
   preview.insertAdjacentHTML('afterend','<label class="remember-budget" id="remember-wrap" hidden><input type="checkbox" name="remember_budget"><span id="remember-text"></span></label>');
   const wrap=$('#remember-wrap'),box=wrap.querySelector('input'),text=$('#remember-text');
   const refresh=()=>{
-   const type=cat.value,rid=resolveBudgetId(type),rname=rid?budgetById(rid).category:null;
+   const type=cat.value,pid=$('#f-person')?.value||'me',rid=resolveBudgetId(type,pid),rname=rid?budgetById(rid).category:null;
    const auto=[...assign.options].find(o=>o.value==='auto');if(auto)auto.textContent='Según el tipo · '+(rname||'sin presupuesto');
    const value=assign.value,b=value==='auto'?(rid?budgetById(rid):null):(value?budgetById(value):null);
    preview.textContent=b?'Irá a '+b.category+' · '+money(Math.max(0,b.limit-budgetSpend(b)))+' disponibles ahora.':'Quedará sin presupuesto.';
    const want=value==='auto'?rid:(value||null);
    const differs=value!=='auto'&&want!==rid;
    wrap.hidden=!differs;box.checked=differs;
-   if(differs)text.innerHTML='Recordar: los gastos de <b>'+esc(type)+'</b> irán siempre a <b>'+esc(b?b.category:'ningún presupuesto')+'</b>. Desmarca para que sea solo este gasto.';
+   if(differs)text.innerHTML='Recordar: los gastos de <b>'+esc(type)+'</b>'+((pid==='me'||pid==='partner')?' de <b>'+esc(personName(pid))+'</b>':'')+' irán siempre a <b>'+esc(b?b.category:'ningún presupuesto')+'</b>. Desmarca para que sea solo este gasto.';
   };
   cat.addEventListener('change',()=>{assign.value='auto';refresh();});
   assign.addEventListener('change',refresh);
+  $('#f-person')?.addEventListener('change',()=>{assign.value='auto';refresh();});
   refresh();
   sheetBaseline=formSignature();
  };
@@ -1391,8 +1410,8 @@ if(location.protocol==='file:'){
  /* --- ajustes: mapa editable + restablecer --- */
  const typeMapSection=()=>{
   const types=categories.filter(c=>!archivedExpenseTypes.has(c));
-  const opts=type=>{const rid=resolveBudgetId(type);return [...budgets.map(b=>[b.id,b.category]),['none','Sin presupuesto']].map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(rid??'none')?'selected':''}>${esc(l)}</option>`).join('');};
-  return `<h2 class="settings-h2">A qué presupuesto va cada tipo de gasto</h2><p class="sub settings-note">Se aprende solo cuando cambias el presupuesto de un gasto y lo marcas como «recordar». Aquí lo corriges cuando quieras.</p><div class="rows type-map">${types.map(t=>{const n=expenseRows(t).length,learned=Object.hasOwn(typeBudgetMap,t);return `<div class="row type-map-row"><span class="row-main"><b>${esc(t)}</b><span class="sub">${n} ${n===1?'gasto':'gastos'} este mes · ${learned?'aprendido':'por nombre'}</span></span><select data-type-map="${esc(t)}" aria-label="Presupuesto para ${esc(t)}">${opts(t)}</select></div>`;}).join('')}</div>`;
+  const opts=(type,pid)=>{const rid=resolveBudgetId(type,pid);return [...budgets.map(b=>[b.id,b.category]),['none','Sin presupuesto']].map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(rid??'none')?'selected':''}>${esc(l)}</option>`).join('');};
+  const personal=Object.keys(typeBudgetMap).filter(k=>k.includes('@')).map(k=>{const [t,pid]=k.split('@');return {k,t,pid};});return `<h2 class="settings-h2">A qué presupuesto va cada tipo de gasto</h2><p class="sub settings-note">Regla: si el gasto es de ${esc(people[0].name)} o de ${esc(people[1].name)}, sale de su Mesada; si es compartido, va al presupuesto de su tipo; sin presupuesto, a Otro. Al cambiar el presupuesto de un gasto y marcar «recordar», la regla nueva manda desde ese momento.</p><div class="rows type-map">${types.map(t=>{const n=expenseRows(t).length,learned=Object.hasOwn(typeBudgetMap,t);return `<div class="row type-map-row"><span class="row-main"><b>${esc(t)}</b><span class="sub">Compartido · ${n} ${n===1?'gasto':'gastos'} este mes · ${learned?'aprendido':'por nombre'}</span></span><select data-type-map="${esc(t)}" aria-label="Presupuesto para ${esc(t)}">${opts(t,'shared')}</select></div>`;}).join('')}${personal.map(({k,t,pid})=>`<div class="row type-map-row"><span class="row-main"><b>${esc(t)}</b><span class="sub">De ${esc(personName(pid))} · aprendido</span></span><select data-type-map="${esc(k)}" aria-label="Presupuesto para ${esc(t)} de ${esc(personName(pid))}">${opts(t,pid)}</select></div>`).join('')}</div>`;
  };
  const settingsBeforeLearn=views.settings;
  views.settings=()=>settingsBeforeLearn()
@@ -1432,13 +1451,13 @@ if(location.protocol==='file:'){
    const raw=Number(t.amount),amt=Math.abs(raw),usd=t.originalUSD!=null&&Number(t.originalUSD)>0;
    const rate=usd?(Number(t.rate)>0?Number(t.rate):amt/Number(t.originalUSD)):1;
    const dop=centsOf(amt),native=usd?centsOf(t.originalUSD):dop,expense=raw<0;
-   return {id:String(t.id),type:expense?'expense':'income',name:String(t.desc||t.cat||'Movimiento').slice(0,100),native,dop,currency:usd?'USD':'DOP',rate,date:String(t.date).slice(0,10),category:String(t.cat||'Otro'),...(expense?{person:personaOf(t.persona)}:{}),account:'',...(t.source?{source:String(t.source)}:{})};
+   return {id:String(t.id),type:expense?'expense':'income',name:String(t.desc||t.cat||'Movimiento').slice(0,100),native,dop,currency:usd?'USD':'DOP',rate,date:String(t.date).slice(0,10),category:String(t.cat||'Otro'),...(expense?{person:personaOf(t.persona)}:{}),account:'',...(t.source?{source:String(t.source)}:{}),...(t.gmailMsgId?{gmailMsgId:String(t.gmailMsgId)}:{}),...(t.bank?{bank:String(t.bank)}:{}),...(t.card4?{card4:String(t.card4)}:{})};
   });
   const seen=new Set(),bs=[];
-  for(const b of (d.budgets||[])){if(!b||!b.cat||seen.has(String(b.cat)))continue;seen.add(String(b.cat));bs.push({id:String(b.id),category:String(b.cat),limit:Math.max(0,centsOf(b.budget||0))});}
+  for(const b of (d.budgets||[])){if(!b||!b.cat||seen.has(String(b.cat)))continue;seen.add(String(b.cat));bs.push({id:String(b.id),category:String(b.cat),limit:Math.max(0,centsOf(b.budget||0)),...(b.persona?{persona:String(b.persona)}:{})});}
   const exp=[...new Set([...(d.prefs?.expCats||[]),...txs.filter(t=>t.type==='expense').map(t=>t.category),...bs.map(b=>b.category)].map(String).filter(Boolean))];
   const inc=[...new Set([...(d.prefs?.incCats||[]),...txs.filter(t=>t.type==='income').map(t=>t.category)].map(String).filter(Boolean))];
-  transactions=txs;budgets=bs;
+  transactions=txs;budgets=bs;if(Number(d.usdRate)>0)rates.USD=Number(d.usdRate);
   if(exp.length){categories.splice(0,categories.length,...exp);customCategories.clear();exp.forEach(c=>customCategories.add(c));}
   if(inc.length)incomeTypes.splice(0,incomeTypes.length,...inc);
   archivedExpenseTypes.clear();archivedIncomeTypes.clear();
@@ -1452,7 +1471,7 @@ if(location.protocol==='file:'){
  personalStatus=function(id,period=month){if(personalLimits[period]?.[id]===undefined){const ms=Object.keys(personalLimits).filter(m=>m<=period&&personalLimits[m]?.[id]!==undefined).sort();if(ms.length){const s=personalStatusBefore(id,ms[ms.length-1]);const spent=transactions.filter(t=>t.type==='expense'&&t.date.startsWith(period)&&personOf(t)===id).reduce((n,t)=>n+t.dop,0);return allowanceStatus(s.limit,spent);}}return personalStatusBefore(id,period);};
 
  /* --- estado en la nube (public.vista_state) --- */
- const stateSnapshot=()=>({v:1,savedAt:Date.now(),transactions,budgets,recurring,accounts,categories:[...categories],customCategories:[...customCategories],archivedExpenseTypes:[...archivedExpenseTypes],incomeTypes:[...incomeTypes],archivedIncomeTypes:[...archivedIncomeTypes],people:people.map(p=>({id:p.id,name:p.name})),personalLimits,typeBudgetMap:window.moneiTypeBudget.map});
+ const stateSnapshot=()=>({v:1,savedAt:Date.now(),transactions,budgets,recurring,accounts,categories:[...categories],customCategories:[...customCategories],archivedExpenseTypes:[...archivedExpenseTypes],incomeTypes:[...incomeTypes],archivedIncomeTypes:[...archivedIncomeTypes],people:people.map(p=>({id:p.id,name:p.name})),personalLimits,typeBudgetMap:window.moneiTypeBudget.map,extra:window.moneiExtra||{}});
  function applyCloud(st){
   transactions=st.transactions||[];budgets=st.budgets||[];recurring=st.recurring||[];
   accounts.splice(0,accounts.length,...(st.accounts||[]));
@@ -1463,7 +1482,7 @@ if(location.protocol==='file:'){
   archivedIncomeTypes.clear();(st.archivedIncomeTypes||[]).forEach(c=>archivedIncomeTypes.add(c));
   (st.people||[]).forEach(sp=>{const p=people.find(p=>p.id===sp.id);if(p&&sp.name)p.name=sp.name;});
   Object.keys(personalLimits).forEach(k=>delete personalLimits[k]);Object.assign(personalLimits,st.personalLimits||{});
-  const map=window.moneiTypeBudget.map;Object.keys(map).forEach(k=>delete map[k]);Object.assign(map,st.typeBudgetMap||{});
+  const map=window.moneiTypeBudget.map;Object.keys(map).forEach(k=>delete map[k]);Object.assign(map,st.typeBudgetMap||{});window.moneiExtra=Object.assign(window.moneiExtra||{},st.extra||{});
   if(!categories.includes(selectedCategory))selectedCategory=categories[0];
  }
  async function cloudSave(){if(!session||!cloudLoaded)return;const snap=stateSnapshot();const j=JSON.stringify(snap);if(j===lastCloudJson)return;try{const body=JSON.stringify({user_id:uid(),data:snap});const r=await api('vista_state',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body,keepalive:body.length<60000});if(r.ok){lastCloudJson=j;syncInfo='Sincronizado '+new Date().toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'});}else{syncInfo='Sin sincronizar (HTTP '+r.status+')';}}catch(e){syncInfo='Sin conexión: se guardó en el dispositivo';}}
@@ -1513,5 +1532,319 @@ if(location.protocol==='file:'){
  render=function(){renderBeforeCloud();scheduleSave();};
  addEventListener('pagehide',()=>{if(session&&cloudLoaded)cloudSave();});
  boot();
+})();
+</script><script>
+/* email.js (9-sep-2026): Email Sync de la app anterior, en el diseño de la Vista. */
+'use strict';
+(()=>{
+ const GMAIL_CLIENT_ID="502055200889-jfbq3mhvs064ke6k6je2rsib11jv7r0l.apps.googleusercontent.com";
+ const GMAIL_SCOPES="https://www.googleapis.com/auth/gmail.readonly";
+ const DEFAULT_SENDERS=["notificaciones@popularenlinea.com","notificacion@bpd.com.do","alertas@bpd.com.do","noreply@bpd.com.do","notificaciones@bsc.com.do","alertas@bhd.com.do","notificaciones@bhd.com.do","alertas@bhdleon.com.do","notificaciones@bhdleon.com.do","alerts@scotiabank.com","alertas@scotiabank.com","notificaciones@scotiabank.com","notificaciones@banreservas.com","alertas@banreservas.com"];
+ const DEFAULT_BANKS=["Popular","Scotiabank","BHD","BSC","Banreservas","Promerica","Lafise","Visa","Mastercard","Amex"];
+ const AUTO_CAT_MAP = { "jerez gran abasto": "Supermercado", "jga": "Supermercado", "gran abasto": "Supermercado", "la sirena": "Supermercado", "nacional": "Supermercado", "jumbo": "Supermercado", "bravo": "Supermercado", "pricesmart": "Supermercado", "ole": "Supermercado", "la cadena": "Supermercado", "playero": "Supermercado", "colmado": "Supermercado", "supermercado": "Supermercado", "hiper": "Supermercado", "plaza lama": "Shopping", "la curacao": "Shopping", "ikea": "Shopping", "amazon": "Shopping", "mercadolibre": "Shopping", "shein": "Shopping", "temu": "Shopping", "aliexpress": "Shopping", "walmart": "Shopping", "costco": "Shopping", "target": "Shopping", "ebay": "Shopping", "wish": "Shopping", "uber": "Transporte", "cabify": "Transporte", "indriver": "Transporte", "didi": "Transporte", "taxi": "Transporte", "peaje": "Transporte", "metro": "Transporte", "teleférico": "Transporte", "omsa": "Transporte", "lyft": "Transporte", "gasolina": "Auto", "shell": "Auto", "total": "Auto", "sunix": "Auto", "propagas": "Auto", "esso": "Auto", "texaco": "Auto", "gulf": "Auto", "lavado": "Auto", "parqueo": "Auto", "parking": "Auto", "taller": "Auto", "gomera": "Auto", "aceite": "Auto", "llanta": "Auto", "batería": "Auto", "grúa": "Auto", "netflix": "Suscripciones", "spotify": "Suscripciones", "disney": "Suscripciones", "hbo": "Suscripciones", "apple": "Suscripciones", "youtube": "Suscripciones", "amazon prime": "Suscripciones", "paramount": "Suscripciones", "crunchyroll": "Suscripciones", "chatgpt": "Suscripciones", "claude": "Suscripciones", "icloud": "Suscripciones", "google one": "Suscripciones", "claro": "Suscripciones", "altice": "Suscripciones", "viva": "Suscripciones", "twitch": "Suscripciones", "xbox": "Suscripciones", "playstation": "Suscripciones", "canva": "Suscripciones", "dropbox": "Suscripciones", "zoom": "Suscripciones", "slack": "Suscripciones", "notion": "Suscripciones", "adobe": "Suscripciones", "restaurante": "Restaurantes", "almuerzo": "Restaurantes", "cena": "Restaurantes", "café": "Restaurantes", "starbucks": "Restaurantes", "mcdonald": "Restaurantes", "burger king": "Restaurantes", "wendy": "Restaurantes", "popeyes": "Restaurantes", "kfc": "Restaurantes", "domino": "Restaurantes", "pizza hut": "Restaurantes", "subway": "Restaurantes", "chipotle": "Restaurantes", "delivery": "Restaurantes", "pedidosya": "Restaurantes", "hugo": "Restaurantes", "glovo": "Restaurantes", "comida": "Restaurantes", "desayuno": "Restaurantes", "brunch": "Restaurantes", "barra": "Restaurantes", "food": "Restaurantes", "uber eats": "Restaurantes", "doordash": "Restaurantes", "sushi": "Restaurantes", "pizza": "Restaurantes", "pollo": "Restaurantes", "carne": "Restaurantes", "panadería": "Restaurantes", "panaderia": "Restaurantes", "farmacia": "Salud", "carol": "Salud", "gps": "Salud", "la familiar": "Salud", "hospital": "Salud", "clínica": "Salud", "doctor": "Salud", "dentista": "Salud", "gym": "Salud", "laboratorio": "Salud", "óptica": "Salud", "ars": "Salud", "vitamina": "Salud", "medicina": "Salud", "consulta": "Salud", "terapia": "Salud", "psicólogo": "Salud", "dermatólogo": "Salud", "pediatra": "Salud", "zara": "Ropa", "nike": "Ropa", "adidas": "Ropa", "h&m": "Ropa", "forever 21": "Ropa", "pull and bear": "Ropa", "bershka": "Ropa", "massimo": "Ropa", "ralph lauren": "Ropa", "tommy": "Ropa", "gap": "Ropa", "old navy": "Ropa", "puma": "Ropa", "new balance": "Ropa", "under armour": "Ropa", "uniqlo": "Ropa", "lacoste": "Ropa", "levi": "Ropa", "edenorte": "Hogar", "edesur": "Hogar", "edeeste": "Hogar", "ede": "Hogar", "caasd": "Hogar", "agua": "Hogar", "internet": "Hogar", "cable": "Hogar", "luz": "Hogar", "electricidad": "Hogar", "gas": "Hogar", "alquiler": "Hogar", "renta": "Hogar", "condominio": "Hogar", "mantenimiento": "Hogar", "seguro": "Hogar", "limpieza": "Hogar", "ferretería": "Hogar", "pintura": "Hogar", "mudanza": "Hogar", "cine": "Entretenimiento", "caribbean": "Entretenimiento", "palacio del cine": "Entretenimiento", "bar": "Entretenimiento", "discoteca": "Entretenimiento", "teatro": "Entretenimiento", "boletos": "Entretenimiento", "concierto": "Entretenimiento", "evento": "Entretenimiento", "fiesta": "Entretenimiento", "karaoke": "Entretenimiento", "bowling": "Entretenimiento", "spa": "Entretenimiento", "masaje": "Entretenimiento", "playa": "Entretenimiento", "excursión": "Entretenimiento", "tour": "Entretenimiento", "universidad": "Educación", "colegio": "Educación", "escuela": "Educación", "curso": "Educación", "matrícula": "Educación", "libro": "Educación", "udemy": "Educación", "coursera": "Educación", "masterclass": "Educación", "tutoría": "Educación", "capacitación": "Educación", "certificación": "Educación", "seminario": "Educación", "futbol": "Deportes", "béisbol": "Deportes", "basketball": "Deportes", "tennis": "Deportes", "natación": "Deportes", "yoga": "Deportes", "crossfit": "Deportes", "peloton": "Deportes", "equipo deportivo": "Deportes", "veterinario": "Mascotas", "mascota": "Mascotas", "perro": "Mascotas", "gato": "Mascotas", "petshop": "Mascotas", "regalo": "Regalos", "cumpleaños": "Regalos", "navidad": "Regalos", "boda": "Regalos", "baby shower": "Regalos", "flores": "Regalos", "joyería": "Regalos", "apple store": "Tecnología", "samsung": "Tecnología", "laptop": "Tecnología", "celular": "Tecnología", "computadora": "Tecnología", "audífonos": "Tecnología", "cargador": "Tecnología", "impresora": "Tecnología", "avión": "Viajes", "vuelo": "Viajes", "hotel": "Viajes", "airbnb": "Viajes", "booking": "Viajes", "maleta": "Viajes", "pasaporte": "Viajes", "visa": "Viajes", "crucero": "Viajes", "warehouse": "Deportes", "padel warehouse": "Deportes", "playbypoint": "Deportes", "taykus": "Deportes", "dominican padel": "Deportes", "sd padel club": "Deportes", "santo domingo padel club": "Deportes", "ba padel": "Deportes", "body shop padel": "Deportes", "padel": "Deportes", "tradingview": "Suscripciones", "treehouse": "Entretenimiento", "memo s bodega": "Restaurantes", "bodega": "Restaurantes", "sm nacional": "Supermercado", "nacional sarasota": "Supermercado", "onlyoptionstrades": "Suscripciones", "unusual whales": "Suscripciones", "unusualwhales": "Suscripciones", "signalstack": "Suscripciones", "trendspider": "Suscripciones" };
+const CAT_KW_GLOBAL = {
+    "Supermercado": ["super", "sirena", "bravo", "nacional", "jumbo", "ole", "mercado", "colmado", "supermercado", "market", "leche", "pollo", "arroz", "carne", "frutas", "verduras", "huevos", "pan ", "cereal", "detergente", "limpieza", "jerez gran abasto", "gran abasto", "jerez", "pricesmart", "walmart", "provisiones", "viveres", "despensa", "aceite cocina", "mantequilla", "queso", "jamon", "salami", "atun", "pasta", "salsa", "botella agua", "jugo", "refresco", "cerveza", "yogurt", "galleta", "harina", "azucar", "sal ", "vinagre", "mayonesa", "ketchup", "mostaza", "oregano", "pimienta", "ajo ", "cebolla", "tomate", "lechuga", "zanahoria", "papa ", "platano", "aguacate", "mango", "piña", "melon", "sandia", "uva", "fresa", "guineo", "limon", "naranja", "pepino", "pimiento", "brocoli", "coliflor", "apio", "espinaca", "hongos", "maiz", "frijol", "lenteja", "garbanzo", "avena", "granola", "miel", "mermelada", "nutella", "almendra", "mani", "nuez", "chips", "snack", "palomita", "soda", "agua mineral", "hielo", "condimento", "salsa soya", "aceite oliva", "cream cheese", "sour cream", "crema", "helado marca", "frozen", "enlatado", "conserva", "sardina", "spam", "corned beef", "papel higienico", "servilleta", "desinfectante", "cloro", "jabon", "suavizante", "bolsa basura", "aluminio", "envoplast", "esponja", "fabuloso", "mistolin", "ace detergente", "ariel", "downy", "colgate", "cepillo diente", "shampoo", "acondicionador", "desodorante", "afeitadora", "toalla sanitaria", "pañal", "formula bebe", "pampers", "huggies", "gerber", "sam's club", "costco", "la cadena", "pueblo", "iberia", "multicentro", "mega centro", "plaza lama", "carrefour", "aldi", "lidl", "trader joe", "whole foods", "publix", "kroger", "safeway", "playero", "colmadon", "minimarket", "bodega", "la despensa", "el super", "la colonial market", "el batey", "maxipali", "super pola", "la placita", "colmado popular", "farmacia carol", "carol express", "gps express", "club del vino", "la enoteca", "bodegas", "vinoteca", "licor", "ron barcelo", "ron brugal", "ron bermudez", "presidente cerveza", "bohemia cerveza", "vino tinto", "vino blanco", "champagne", "whiskey", "vodka", "tequila", "brandy", "sambuca", "baileys", "hennessy", "johnnie walker", "chivas", "buchanan", "glenfiddich", "macallan", "jack daniels", "crown royal", "grey goose", "absolut", "belvedere", "ciroc", "patron", "don julio", "clase azul", "casa dragones", "mezcal"],
+    "Restaurantes": ["restaurante", "almuerzo", "cena", "desayuno", "comida", "pizza", "sushi", "burger", "pollo frito", "bbq", "buffet", "cafeteria", "don pepe", "buen provecho", "adrian tropical", "meson", "asadero", "brunch", "delivery food", "mcdonald", "wendy", "burger king", "kfc", "domino", "papa john", "subway", "starbucks", "cafe", "coffee", "helado", "postre", "panaderia", "marisco", "ceviche", "empanada", "mofongo", "chicharron", "taco", "burrito", "ramen", "poke", "thai", "curry", "shawarma", "kebab", "wok", "pad thai", "dumpling", "teriyaki", "tempura", "sashimi", "pho", "tapas", "paella", "risotto", "carbonara", "lasagna", "tiramisu", "crepe", "waffle", "pancake", "croissant", "muffin", "donut", "churro", "flan", "tres leches", "brownie", "cheesecake", "gelato", "smoothie", "milkshake", "frappe", "latte", "cappuccino", "espresso", "americano", "matcha", "bubble tea", "jugo natural", "batida", "uber eats", "doordash", "pedidos ya", "rappi", "glovo", "just eat", "chick-fil-a", "popeyes", "five guys", "shake shack", "chipotle", "panera", "panda express", "taco bell", "dairy queen", "baskin robbins", "krispy kreme", "dunkin", "bola de oro", "el conuco", "mitre", "pat e palo", "la cassina", "fellini", "grill", "steakhouse", "outback", "applebees", "tgif", "chilis", "olive garden", "ihop", "memo bodega", "bonao grill", "la parrillada", "el meson de la cava", "samurai", "nobu", "el catador", "la residence", "vesuvio", "il buco", "sophia's", "hard rock cafe", "buffalo wild wings", "wingstop", "jalao", "nipau", "mix by chef", "casa virginia", "la cocina de mama", "apple.com/bill", "google play", "playstation store", "xbox store", "nintendo eshop", "steam purchase", "spotify premium", "netflix.com", "disney plus", "hbo max", "amazon prime", "uber trip", "uber eats order", "rappi order", "pedidos ya order", "barra payan", "lulu tasting bar", "bottega family", "peperoni", "travesias", "scherezade", "piantini grill", "la dolcerie", "brew dog", "la taberna", "bon vivant", "basilica cafe", "segafredo", "juan valdez", "gloria jeans", "nespresso boutique", "la creperia", "waffle house", "le petit paris", "sazón boricua", "el mesón de bari", "la nueva era", "asadero los argentinos", "pollos victorina", "el huaracho", "pica pollo", "comedor", "frituras", "chicharronera", "food truck", "food court", "patio de comida", "plaza gastronómica", "mercado gastronomico"],
+    "Transporte": ["uber", "didi", "taxi", "gasolina", "gas ", "gasolinera", "peaje", "parqueo", "parking", "estacionamiento", "metro", "omnibus", "guagua", "pasaje", "motoconcho", "indriver", "shell", "total", "sunix", "propagas", "tropigas", "autopista", "telepeaje", "lyft", "bolt", "cabify", "caribe tours", "metro bus", "teleférico", "opret", "omsa", "esso", "texaco", "gulf", "bp ", "chevron", "mobil", "citgo", "car wash express", "autolavado", "parquímetro", "multa tránsito", "infracción", "renovación licencia", "placa", "seguro vehiculo", "marbete dgii", "uber ride", "lyft ride", "flota", "autobús", "tren", "ferry", "avión", "peaje las americas", "peaje duarte", "peaje coral", "gasolina popular", "isla peaje", "ace de peaje", "peaje sanchez", "peaje 6 de noviembre", "peaje aeropuerto", "peaje autopista del nordeste", "peaje la romana", "parqueo agora", "parqueo blue mall", "parqueo sambil", "uber moto", "indriver moto", "motor", "motocicleta", "scooter"],
+    "Entretenimiento": ["cine", "netflix", "spotify", "disney", "hbo", "youtube premium", "apple tv", "paramount", "crunchyroll", "hulu", "dazn", "espn", "amazon prime video", "twitch", "juego", "gaming", "steam", "playstation", "xbox", "nintendo", "bar", "discoteca", "fiesta", "karaoke", "boletos", "concierto", "teatro", "museo", "club", "bowling", "billar", "evento", "escape room", "casino", "loteria", "piscina", "playa", "excursion", "tour", "safari", "snorkeling", "diving", "buceo", "parasailing", "jet ski", "kayak", "rafting", "zipline", "tirolesa", "laser tag", "paintball", "go kart", "mini golf", "arcade", "trampolin", "parque diversiones", "zoo", "acuario", "planetario", "senderismo", "hiking", "camping", "glamping", "trivia night", "open mic", "stand up", "comedy show", "circo", "feria", "festival", "pool party", "rooftop", "lounge", "hookah", "sports bar", "pub", "happy hour", "ladies night", "cover charge", "entrada", "ticket", "vip", "palacio del cine", "caribbean cinemas", "zona colonial", "malecon", "juan dolio", "boca chica", "bavaro", "punta cana", "casa de campo", "sosua", "cabarete", "las terrenas", "samana", "jarabacoa", "constanza", "27 charcos", "salto de jimenoa", "isla saona", "isla catalina", "los haitises", "hoyo azul", "cueva fun fun", "parque ecologico ojos indigenas", "cap cana", "scape park", "marinarium", "monkey land", "ocean world", "manati park", "acuario nacional", "jardin botanico", "parque mirador sur", "parque mirador norte", "plaza de la cultura", "centro cultural banreservas", "sala de teatro", "teatro nacional", "gran teatro del cibao", "palacio de bellas artes", "casa de teatro", "sala ravelo", "blue mall cine", "sambil cine", "downtown cine", "agora cine", "atabey cine", "coliseo gallistico", "hipodromo v centenario", "coliseo de la romana", "monster truck", "cirque du soleil", "medieval times", "dave and busters", "topgolf", "ifly indoor", "sky zone", "urban air", "main event"],
+    "Suscripciones": ["suscripcion", "subscripcion", "mensualidad", "plan ", "premium", "apple music", "icloud", "chatgpt", "claude", "openai", "anthropic", "adobe", "notion", "internet", "cable", "streaming", "canva", "figma", "github", "copilot", "vercel", "netlify", "aws", "google cloud", "azure", "slack", "zoom pro", "microsoft 365", "office 365", "google workspace", "dropbox", "evernote", "todoist", "asana", "trello", "monday", "airtable", "miro", "loom", "grammarly", "midjourney", "dall-e", "audible", "kindle unlimited", "scribd", "medium", "substack", "patreon", "skillshare", "masterclass", "linkedin premium", "duolingo plus", "headspace", "calm", "strava premium", "peloton", "apple one", "google one", "nordvpn", "expressvpn", "1password", "tradingview", "playbypoint", "tidal", "deezer", "sling tv", "youtube tv", "philo", "mubi", "criterion", "starz", "claro fibra", "altice fibra", "wind telecom", "claro tv", "altice tv", "directv", "dish network", "xfinity", "spectrum", "att fiber", "verizon fios", "t-mobile home", "republic wireless", "mint mobile", "google fi", "ring protect", "nest aware", "blink plan", "arlo plan", "simplisafe", "adt", "ring doorbell", "homekit", "smart home", "amazon unlimited", "nintendo online", "ps plus", "xbox game pass", "ea play", "ubisoft plus", "geforce now", "shadow pc", "cloud gaming", "humble bundle", "epic games", "gog", "battle.net", "origin", "rockstar", "bethesda", "crackle", "tubi", "pluto tv", "vudu", "fandango", "amc+", "bet+", "hayu", "acorn tv", "sundance now", "hallmark", "funimation", "vrv", "boomerang", "cartoonito"],
+    "Salud": ["farmacia", "medicina", "doctor", "consulta", "dentista", "laboratorio", "clinica", "hospital", "vitamina", "pastilla", "emergencia medica", "seguro medico", "optica", "lentes", "terapia", "psicologo", "nutricionista", "dermatologo", "radiografia", "ultrasonido", "analisis", "receta medica", "antibiotico", "antigripal", "jarabe", "gotas", "crema medicinal", "curitas", "vendaje", "alcohol", "agua oxigenada", "termometro", "tensiometro", "glucometro", "ortodoncia", "brackets", "limpieza dental", "blanqueamiento", "corona dental", "implante", "endodoncia", "cirugia", "resonancia", "tomografia", "mamografia", "hemograma", "vacuna", "fisioterapia", "rehabilitacion", "acupuntura", "suplemento", "omega", "magnesio", "zinc", "probiotico", "melatonina", "colageno", "biotina", "multivitaminico", "carol farmacia", "gps farmacia", "la familiar", "farmax", "farmacia carol", "farmacia gps", "farmacias sas", "farmacia los hidalgos", "amadita laboratorio", "referencia laboratorio", "profamilia", "cedimat", "plaza de la salud", "homs", "clinica abreu", "centro medico", "union medica", "hospiten", "grupo rescue", "clinica corominas", "clinica gomez patiño", "hospital metropolitano", "hospital general", "clinica reid", "clinica abel gonzalez", "cetro", "cdd", "bioanalisis", "imagenologia", "dermatologia", "oftalmologia", "otorrino", "urologia", "ginecologia", "pediatria", "cardiologia", "neurologia", "gastroenterologia", "endocrinologia", "traumatologia", "hematologia", "reumatologia", "neumologia", "alergologia", "oncologia", "nefrologia", "psiquiatria", "geriatria", "medicina interna", "medicina general", "medicina familiar", "quiropráctico", "osteopata", "podólogo", "fonoaudiólogo", "salud ocupacional"],
+    "Deportes": ["padel", "paddle", "cancha", "gimnasio", "gym", "crossfit", "yoga", "pilates", "spinning", "futbol", "basket", "basketball", "tennis", "golf", "natacion", "surf", "bicicleta", "ciclismo", "running", "maraton", "5k", "10k", "entrenador", "personal trainer", "proteina", "suplemento deportivo", "whey", "creatina", "pre workout", "equipo deportivo", "raqueta", "pelota", "balon", "guantes box", "pesas", "mancuerna", "colchoneta", "gatorade", "powerade", "membresia gym", "clase fitness", "boxing", "boxeo", "mma", "artes marciales", "jiu jitsu", "karate", "taekwondo", "muay thai", "wrestling", "triathlon", "ironman", "crossfit games", "powerlifting", "bodybuilding", "calisthenics", "hiit", "zumba", "foam roller", "kettlebell", "jump rope", "battle rope", "trx", "bosu", "treadmill", "elliptical", "rowing machine", "peloton bike", "cancha alquiler", "court rental", "green fee", "caddie", "golf cart", "torneo", "competencia", "carrera", "padel warehouse", "playbypoint", "taykus", "dominican padel", "sd padel club", "santo domingo padel club", "ba padel", "body shop padel", "padel republic", "the padel club", "wp padel", "la bocha padel", "padel zone", "padel haus", "padel nuestro", "bullpadel", "head padel", "adidas padel", "wilson padel", "nox padel", "siux padel", "royal padel", "star vie", "babolat padel", "drop shot", "kuikma", "vibora padel", "metalbone", "centro olimpico", "naco club", "country club naco", "bella vista country club", "club san carlos", "casa de campo tennis", "athletic club", "sport city", "smart fit", "gold's gym", "anytime fitness", "orangetheory", "f45 training", "body tech", "real madrid academy rd", "cancha sintetica", "liga futbol", "liga softball", "liga baloncesto", "cajuiles golf", "teeth of the dog", "dye fore golf", "la cana golf", "corales golf", "punta espada golf", "playa dorada golf", "white sands golf", "guavaberry golf", "metro country club naco", "jarabacoa golf", "driving range", "academia de golf", "estadio olimpico", "estadio quisqueya", "estadio cibao", "palacio de los deportes", "santo domingo marathon", "punta cana marathon", "iron man 70.3", "trail running", "ultra trail", "vuelta ciclista", "ride dominicana", "padel indoor", "padel outdoor", "pista de padel", "cristal de padel", "padel pro shop", "grip padel", "overgrip", "vibora", "dunlop padel", "tecnifibre padel", "adidas padelnite", "torneo padel", "liga padel", "campeonato padel", "copa padel", "world padel tour", "premier padel", "a1 padel", "fip padel", "federacion padel", "padel dominicano", "padel rd", "academia padel", "clases padel", "escuela padel", "instructor padel", "coach padel", "entrenamiento padel", "clinica padel", "reserva cancha", "booking cancha", "alquiler cancha", "hora cancha", "cancha techada", "cancha abierta", "club padel", "centro padel", "complejo padel", "padel lounge", "padel bar", "after padel", "padel tournament", "padel league", "mixto padel", "americano padel", "mexicano padel", "padel social", "padel night", "noche padel", "padel sunset", "padel morning", "padel weekend", "padel femenino", "padel masculino", "padel junior", "padel kids", "padel senior", "padel amateur", "padel profesional", "padel competitivo", "padel recreativo", "cancha 1", "cancha 2", "cancha 3", "cancha 4", "cancha 5", "cancha 6", "cancha 7", "cancha 8", "luces cancha", "reservacion deportiva", "bella vista padel", "arroyo hondo padel", "piantini padel", "naco padel", "ensanche padel", "los prados padel", "gazcue padel", "serrallés padel", "evaristo morales padel", "renacimiento padel", "paraiso padel", "mirador padel", "churchill padel", "lincoln padel", "sarasota padel", "santiago padel", "la vega padel", "san cristobal padel", "bani padel", "san pedro padel", "la romana padel", "higuey padel", "punta cana padel", "puerto plata padel", "samana padel", "bavaro padel", "sosua padel", "cabarete padel", "jarabacoa padel", "constanza padel", "bonao padel", "moca padel", "nagua padel", "cotui padel", "azua padel", "barahona padel", "monte cristi padel", "padel las palmas", "padel el prado", "padel los jardines", "padel bella vista tennis", "padel casa de españa", "padel club campestre", "padel la explanada", "padel parque del este", "padel parque mirador", "mountain bike", "bmx", "skateboard", "patinaje", "roller", "ice skating", "hockey", "volleyball", "voleibol", "handball", "balonmano", "rugby", "cricket", "badminton", "squash", "racquetball", "fencing", "esgrima", "archery", "tiro con arco", "equitacion", "hipismo", "polo", "waterpolo", "remo", "canoa", "vela", "sailing", "windsurf", "kitesurf", "wakeboard", "ski acuatico", "pesca deportiva", "snorkel", "freediving", "apnea", "submarinismo", "spearfishing", "caza", "tiro deportivo", "atletismo", "lanzamiento", "salto alto", "salto largo", "velocidad", "obstáculos", "decathlon", "pentathlon", "heptathlon", "marcha", "campo traviesa", "ultra maraton", "50k", "100k", "100 millas", "trail 21k", "night run", "color run", "zombie run", "mud run", "tough mudder", "spartan race", "endurance", "obstacle course", "ninja warrior", "american ninja", "functional fitness", "street workout", "animal flow", "movimiento natural", "parkour", "freerunning", "slackline", "bouldering", "escalada", "rock climbing", "rapel", "barranquismo", "canyoning", "via ferrata", "espeleologia", "caving", "orienteering", "geocaching", "disc golf", "frisbee", "ultimate frisbee", "futbol sala", "futsal", "beach volley", "beach tennis", "beach soccer", "flag football", "touch rugby", "softball", "baseball", "beisbol", "pelota", "dominicana de beisbol", "aguilas cibaenas", "tigres del licey", "leones del escogido", "gigantes del cibao", "estrellas orientales", "toros del este", "atleticos de san cristobal", "lidom", "serie del caribe", "world baseball classic", "mlb", "nba", "nfl", "premier league", "la liga", "serie a", "bundesliga", "ligue 1", "champions league", "europa league", "mundial", "olympics", "copa america", "euro", "gold cup", "concacaf", "libertadores", "sudamericana", "ufc", "bellator", "one championship", "pfl", "boxing", "wbc", "wba", "ibf", "wbo", "canelo", "pacquiao", "formula 1", "f1", "motogp", "nascar", "indycar", "rally", "wrc", "dakar", "le mans", "formula e", "superbike", "moto2", "moto3", "tour de france", "giro", "vuelta españa", "paris roubaix", "monument cycling", "grand tour", "wimbledon", "us open tennis", "roland garros", "australian open", "masters 1000", "atp", "wta", "davis cup", "fed cup", "pga tour", "european tour", "lpga", "masters augusta", "us open golf", "british open", "pga championship", "ryder cup", "presidents cup", "superbowl", "world series", "stanley cup", "nba finals", "march madness", "final four"],
+    "Auto": ["mecanico", "taller", "goma", "aceite motor", "bateria auto", "lavado auto", "car wash", "repuesto", "alineacion", "frenos", "seguro auto", "marbete", "revision tecnica", "filtro aceite", "filtro aire", "correa", "amortiguador", "radiador", "grua", "parabrisas", "alternador", "bujia", "clutch", "embrague", "transmision", "suspension", "bomba agua", "bomba gasolina", "inyector", "sensor", "scanner auto", "pintura auto", "latoneria", "pulidora", "cera auto", "rin ", "llanta", "caucho", "anticongelante", "power steering", "dashcam", "alarma auto", "automax", "autolote", "delta comercial", "grupo riviera", "auto repuestos", "la mundial repuestos", "repuestos sandy", "detailing", "polishing", "ceramic coating", "tinte vidrio", "polarizado", "wrap vinyl", "air freshener", "floor mat", "seat cover", "roof rack", "cargo box", "hitch", "winch", "lift kit", "suspension kit", "turbo", "supercharger", "chip tuning", "dyno", "Headers", "exhaust", "muffler", "catalytic", "downpipe", "intercooler", "cold air intake", "spark plug", "ignition coil", "oxygen sensor", "mass air flow", "throttle body", "fuel pump", "timing belt", "timing chain", "water pump", "thermostat", "head gasket", "piston ring", "valve cover", "oil pan", "differential fluid", "transmission fluid", "brake fluid", "coolant flush", "power steering fluid", "a/c recharge", "freon", "compresor ac", "evaporador", "condensador", "relay", "fuse", "wiring harness", "ecu", "pcm", "bcm", "abs module", "airbag", "srs", "tpms", "key fob", "llave inteligente", "inmovilizador"],
+    "Shopping": ["amazon", "tienda", "mall", "plaza", "compra online", "electronica", "celular", "laptop", "audifonos", "gadget", "tecnologia", "bestbuy", "apple store", "samsung", "mercado libre", "shein", "temu", "aliexpress", "tablet", "ipad", "iphone", "macbook", "airpods", "cargador", "funda", "reloj", "smartwatch", "consola", "monitor", "teclado", "mouse", "bocina", "speaker", "bluetooth", "memoria usb", "disco duro", "ssd", "webcam", "microfono", "ring light", "power bank", "drone", "gopro", "kindle", "smart tv", "chromecast", "fire stick", "roku", "echo dot", "alexa", "google home", "air fryer", "instant pot", "blender", "licuadora", "cafetera", "nespresso", "microondas", "plancha ropa", "aspiradora", "secador pelo", "plaza lama", "la curacao", "agora mall", "blue mall", "downtown center", "galería 360", "sambil", "atabey", "megacentro", "acropolis center", "diamond mall", "las avenidas", "tienda online rd", "corotos", "mercado libre rd", "amazon rd", "apple rd", "samsung rd", "claro tienda", "altice tienda", "xiaomi", "oneplus", "google pixel", "huawei", "oppo", "vivo", "realme", "motorola", "lg", "sony", "tcl", "hisense", "philips", "jbl", "bose", "sony headphones", "sennheiser", "audio technica", "marshall", "harman kardon", "sonos", "ultimate ears", "anker", "belkin", "otterbox", "spigen", "uag", "zagg", "mophie", "logitech", "razer", "corsair", "steelseries", "hyperx", "asus rog", "msi gaming", "alienware", "lenovo", "hp", "dell", "acer", "dyson", "roomba", "shark", "bissell", "kitchenaid", "cuisinart", "breville", "vitamix", "ninja blender", "le creuset", "staub", "all clad", "calphalon", "t-fal", "tefal", "black decker", "dewalt", "makita", "milwaukee", "bosch tool", "ryobi", "craftsman", "stanley", "snap on"],
+    "Hogar": ["luz ", "agua ", "electricidad", "edenorte", "edesur", "edeeste", "aba ", "claro hogar", "altice hogar", "internet hogar", "gas del hogar", "basura", "mantenimiento", "plomero", "electricista", "pintura", "mueble", "decoracion", "ferreteria", "cortina", "sabana", "toalla", "almohada", "colchon", "lampara", "ventilador", "aire acondicionado", "inversor", "fumigacion", "jardineria", "cesped", "cerradura", "taladro", "cemento", "arena", "bloque", "varilla", "tubo pvc", "grifo", "inodoro", "lavamanos", "ducha", "calentador agua", "tanque agua", "cisterna", "bomba agua casa", "interruptor", "breaker", "generador", "planta electrica", "ups", "mudanza", "storage unit", "estante", "cuadro", "humidificador", "purificador aire", "caasd", "coraasan", "egehid", "claro fibra", "altice fibra", "wind telecom", "dominicana limpia", "hache ferreteria", "ferreteria americana", "do it center", "home depot", "lowes", "ace hardware", "alquiler", "renta", "condominio", "hipoteca", "mortgage", "cuota apartamento", "mantenimiento edificio", "portero", "seguridad edificio", "ascensor", "lobby", "area comun", "piscina comunal", "terraza", "rooftop", "bbq area", "gym edificio", "dog park", "playground", "lavanderia comun", "parqueo edificio", "control acceso", "camara seguridad", "cerca electrica", "generador comun", "cisterna comun", "planta tratamiento", "jardinero", "poda arbol", "paisajismo", "riego automatico", "pest control", "termita", "cucaracha", "raton", "hormiga", "mosquito", "zancudo", "insecticida", "raticida", "trampa", "repelente", "citronela", "anti mosquito", "servicio domestico", "empleada domestica", "asistente hogar", "lavado ropa", "planchado", "cocina hogar", "compra hogar", "limpieza profunda", "deep cleaning", "desinfeccion", "sanitizacion", "ozono", "fumigacion preventiva"],
+    "Ropa": ["ropa", "zapatos", "tenis", "camisa", "pantalon", "vestido", "zapateria", "zara", "h&m", "tienda ropa", "sastre", "costura", "lavanderia", "dry clean", "nike", "adidas", "puma", "jordan", "new balance", "gucci", "louis vuitton", "polo ralph lauren", "tommy hilfiger", "calvin klein", "forever 21", "gap", "old navy", "pull and bear", "bershka", "massimo dutti", "mango ", "uniqlo", "levi", "chaqueta", "falda", "short", "jean", "traje", "corbata", "cinturon", "cartera", "bolso", "gafas sol", "perfume", "maquillaje", "cosmetico", "crema facial", "serum", "foundation", "mascara", "lipstick", "eyeshadow", "nail polish", "esmalte", "ropa interior", "sandalias", "botas", "sneakers", "crocs", "birkenstock", "converse", "vans", "skechers", "reebok", "under armour", "fila", "lacoste", "hugo boss", "armani", "versace", "prada", "balenciaga", "dior", "chanel", "hermes", "burberry", "coach", "kate spade", "michael kors", "fossil", "swarovski", "pandora", "tiffany", "rolex", "omega", "tag heuer", "casio", "garmin", "fitbit", "coppelia", "la aurora", "renato", "europa", "banana republic", "j.crew", "brooks brothers", "express", "ann taylor", "loft", "anthropologie", "free people", "urban outfitters", "asos", "boohoo", "fashion nova", "pretty little thing", "revolve", "ssense", "farfetch", "net a porter", "nordstrom", "neiman marcus", "saks", "bloomingdale", "macy", "tj maxx", "marshalls", "ross", "burlington", "primark", "c&a", "lefties", "stradivarius", "oysho", "intimissimi", "victoria secret", "bath body works", "sephora", "ulta", "mac cosmetics", "nyx", "maybelline", "loreal", "estee lauder", "clinique", "lancome", "benefit", "urban decay", "too faced", "tarte", "nars", "bobbi brown", "charlotte tilbury", "fenty beauty", "rare beauty", "glossier", "the ordinary", "cerave", "la roche posay", "neutrogena", "cetaphil", "eucerin", "bioderma", "avene", "vichy", "olay", "nivea", "dove", "pantene", "head shoulders", "garnier", "tresemme", "john frieda", "moroccanoil", "olaplex", "kerastase", "redken", "bumble bumble", "aveda"],
+    "Educacion": ["curso", "libro", "clase", "tutoria", "colegio", "universidad", "escuela", "capacitacion", "taller educativo", "udemy", "coursera", "duolingo", "seminario", "conferencia", "diplomado", "maestria", "certificacion", "pluralsight", "codecademy", "khan academy", "edx", "skillshare", "brilliant", "datacamp", "leetcode", "bootcamp", "matrícula", "inscripcion", "pension escolar", "uniforme escolar", "utiles escolares", "cuaderno", "mochila escolar", "impresion", "fotocopias", "ebook", "audiobook", "unibe", "unphu", "pucmm", "uasd", "intec", "apec", "ucsd", "utesa", "o&m", "unicaribe", "barna", "unapec", "funglode", "infotep", "itla", "academia", "instituto", "escuela de idiomas", "harvard online", "mit opencourseware", "stanford online", "yale online", "princeton", "columbia", "cambridge", "oxford", "berkeley", "treehouse", "codecamp", "freecodecamp", "scrimba", "frontend masters", "egghead", "laracasts", "wes bos", "zero to mastery", "platzi", "coderhouse", "henry", "academia geek", "4geeks", "ironhack", "le wagon", "general assembly", "flatiron", "lambda school", "microverse", "holberton"],
+    "Mascotas": ["veterinario", "vet ", "mascota", "perro", "gato", "comida perro", "comida gato", "purina", "pedigree", "royal canin", "hills", "pro plan", "dog chow", "cat chow", "whiskas", "blue buffalo", "collar mascota", "correa mascota", "jaula", "cama mascota", "juguete mascota", "arena gato", "shampoo mascota", "antipulga", "desparasitante", "vacuna mascota", "peluqueria mascota", "grooming", "paseador", "daycare mascota", "hotel mascota", "acuario", "pecera", "pet shop", "pet zone", "mascota feliz", "petland", "animalandia", "vetoquinol", "frontline", "nexgard", "bravecto", "seresto", "advantage", "revolution", "heartgard", "drontal", "milbemax", "metacam", "rimadyl", "gabapentina vet", "cerenia", "fortiflora", "zesty paws", "greenies", "kong", "nylabone", "chuckit", "ruffwear", "kurgo", "furminator", "dremel pet", "pet corrector", "clicker", "treat pouch", "snuffle mat", "slow feeder", "elevated bowl", "automatic feeder", "water fountain pet", "gps tracker pet", "fi collar", "whistle", "tractive", "furbo", "petcube", "ring pet", "doggy door", "cat door", "scratching post", "rascador", "cat tree", "torre gato", "litter box", "arenero automatico", "litter robot", "catgenie", "breeze", "tidy cats", "arm hammer", "fresh step", "world best", "pretty litter", "tofu litter"],
+    "Viajes": ["hotel", "airbnb", "booking", "hostal", "resort", "vuelo", "aeropuerto", "aerolinea", "american airlines", "delta", "united", "jetblue", "spirit", "copa airlines", "avianca", "latam", "arajet", "sky airline", "maleta", "equipaje", "passport", "pasaporte", "visa fee", "travel insurance", "seguro viaje", "rental car", "hertz", "avis", "enterprise", "sixt", "turo", "excursion", "tour guiado", "crucero", "carnival", "royal caribbean", "norwegian", "all inclusive", "transfer aeropuerto", "roaming", "chip internacional", "esim", "souvenir", "duty free", "lounge pass", "punta cana airport", "aeropuerto las americas", "aeropuerto cibao", "aeropuerto la romana", "bahia principe", "barcelo", "be live", "catalonia", "dreams", "excellence", "grand palladium", "hard rock punta cana", "iberostar", "majestic", "melia", "occidental", "paradisus", "princess", "riu", "royalton", "secrets", "viva wyndham", "zoetry", "decameron", "sunscape", "marriott", "hilton", "hyatt", "sheraton", "westin", "w hotel", "ritz carlton", "four seasons", "st regis", "intercontinental", "holiday inn", "hampton inn", "courtyard", "fairfield", "residence inn", "springhill", "towneplace", "aloft", "element", "doubletree", "embassy suites", "homewood", "best western", "choice hotels", "wyndham", "la quinta", "radisson", "crowne plaza", "kimpton", "andaz", "ace hotel", "citizenm", "pod hotel", "yotel", "moxy", "hostelworld", "trivago", "kayak", "skyscanner", "google flights", "hopper", "kiwi", "momondo", "expedia", "hotels.com", "priceline", "orbitz", "travelocity", "agoda", "trip.com", "lastminute", "getaway", "vrbo", "vacation rental", "casa vacacional", "villa rental", "glamping", "eco lodge", "treehouse hotel", "boutique hotel", "bed breakfast", "posada", "parador", "hacienda", "finca", "casita", "bungalow", "overwater", "infinity pool", "spa hotel", "wellness retreat", "yoga retreat"],
+    "Seguros": ["seguro", "poliza", "deducible", "copago", "coaseguro", "siniestro", "reclamacion", "ars ", "senasa", "humano seguros", "universal seguros", "mapfre", "seguros banreservas", "seguros popular", "seguros sura", "la colonial seguros", "palic", "metlife", "seguros mundial", "seguros ademi", "seguros pepin", "seguros patria", "seguros constitución", "la monumental", "angloamericana", "ars humano", "ars universal", "ars palic", "ars monumental", "ars primera", "ars yunen", "ars futuro", "ars cmd", "ars semma", "ars senasa", "ars colonial", "geico", "state farm", "allstate", "liberty mutual", "progressive", "nationwide", "usaa", "farmers", "travelers", "hartford", "aig", "chubb", "zurich", "allianz", "axa", "generali", "lloyd"],
+    "Tecnologia": ["reparacion celular", "pantalla rota", "bateria celular", "case celular", "screen protector", "cargador rapido", "cable usb c", "adaptador", "hub usb", "docking station", "impresora", "tinta impresora", "toner", "software", "licencia", "antivirus", "domain name", "hosting web", "cloud storage", "tech support", "soporte tecnico", "reparacion laptop", "upgrade ram", "laptop stand", "monitor arm", "mouse pad", "ergonomic chair", "standing desk", "claro tienda", "altice tienda", "doctor celular", "phone fix", "clickcel", "techtodo", "apple genius", "samsung service", "lg service", "pc depot", "computer express", "tech hub", "geek squad", "micro center", "newegg", "b&h photo", "adorama"],
+    "Servicios": ["abogado", "notario", "contador", "impuestos", "dgii", "tss", "hacienda", "traduccion", "legalizacion", "apostilla", "poder notarial", "contrato", "escritura", "titulo propiedad", "cedula", "licencia conducir", "arquitecto", "ingeniero", "fumigacion", "limpieza profesional", "nanny", "babysitter", "mensajeria", "courier", "fedex", "ups shipping", "dhl", "bm cargo", "vimenpaq", "exel cargo", "correo postal", "casillero", "couriermasters", "pro consumidor", "tesoreria nacional", "procuraduria", "junta central electoral", "pasaporte rd", "embajada", "consulado", "camara de comercio", "onapi", "registro mercantil", "superintendencia", "plomeria", "electricidad servicio", "aire acondicionado servicio", "cerrajero", "vidrieria", "carpinteria", "albañileria", "soldadura", "herreria", "tapiceria", "costura arreglo", "barberia", "peluqueria", "salon belleza", "manicure", "pedicure", "spa ", "masaje", "facial", "depilacion", "microblading", "pestañas", "extensiones", "keratina", "alisado", "tinte pelo", "corte pelo", "barba", "barbershop", "barbalogia", "the gents place", "uppercut", "v's barbershop", "floyd's", "sport clips", "great clips", "supercuts", "fantastic sams", "nail salon", "gel nails", "acrylic nails", "dip powder", "nail art", "waxing", "threading", "laser hair", "electrolysis", "botox", "filler", "lip filler", "juvederm", "restylane", "microneedling", "chemical peel", "dermaplaning", "hydrafacial", "led therapy", "body sculpting", "coolsculpting", "liposuction", "tummy tuck", "breast augmentation", "rhinoplasty", "blepharoplasty", "facelift"],
+    "Regalos": ["regalo", "gift", "present", "gift card", "tarjeta regalo", "bouquet", "flores", "rosas", "arreglo floral", "chocolate regalo", "caja regalo", "envoltura", "tarjeta cumpleaños", "globo", "piñata", "confeti", "party supply", "cotillon", "vela cumpleaños", "juguete", "lego", "hot wheels", "barbie", "nerf", "funko pop", "peluche", "puzzle", "board game", "juego mesa", "videojuego", "la floristeria", "regalos originales", "detalle", "sorpresa", "joyeria", "anillo", "collar accesorio", "pulsera", "arete", "reloj regalo", "pluma mont blanc", "encendedor zippo", "billetera", "mancuernillas", "gemelos", "portafolio", "agenda cuero", "wine gift", "cesta regalo", "basket regalo", "hamper", "edible arrangement", "chocolate box", "godiva", "ferrero", "lindt", "toblerone", "cadbury", "ghirardelli", "See's candies", "chocolate artesanal"]
+};
+const autoCat = (desc, txns, customMap) => {
+    const d = (desc || "").toLowerCase();
+    // Check learned custom mappings first (exact match priority)
+    if (customMap) {
+        for (const [k, v] of Object.entries(customMap)) {
+            if (d.includes(k)) return v;
+        }
+    }
+    // Then check built-in map
+    for (const [k, v] of Object.entries(AUTO_CAT_MAP)) {
+        if (d.includes(k)) return v;
+    }
+    if (txns && txns.length > 0) {
+        // Stricter fuzzy fallback: require a shared token of length >= 4 and skip common filler words
+        const STOP = new Set(["pago", "compra", "tarjeta", "consumo", "transferencia", "santo", "domingo", "desde", "para", "banco", "credito", "débito", "debito"]);
+        const words = d.split(/\s+/).filter(w => w.length >= 4 && !STOP.has(w));
+        const fullName = d.trim();
+        const match = txns.find(t => {
+            if (!t.cat || !t.desc)
+                return false;
+            const td = t.desc.toLowerCase();
+            // Full-merchant-name match OR a shared significant token (>= 4 chars, non-filler)
+            return (fullName.length >= 4 && td.includes(fullName)) || words.some(w => td.includes(w));
+        });
+        if (match)
+            return match.cat;
+    }
+    return "";
+};
+const catFromMerchant = (merchant, learnedMap) => {
+    const m = (merchant || "").toLowerCase().replace(/[*_./\\-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!m)
+        return "Otro";
+    // Keys get the same normalization as the merchant: learned entries like "netflix.com"
+    // must match m="netflix com" or user corrections silently never stick on future imports.
+    const hit = map => { let best = "", bl = 0; for (const [k, v] of Object.entries(map || {})) {
+        const nk = k.toLowerCase().replace(/[*_./\\-]+/g, " ").replace(/\s+/g, " ").trim();
+        if (nk && nk.length > bl && m.includes(nk)) {
+            best = v;
+            bl = nk.length;
+        }
+    } return best; };
+    const c1 = hit(learnedMap);
+    if (c1)
+        return c1;
+    const c2 = hit(AUTO_CAT_MAP);
+    if (c2)
+        return c2;
+    for (const [cc, kws] of Object.entries(typeof CAT_KW_GLOBAL !== "undefined" ? CAT_KW_GLOBAL : {})) {
+        if (kws.some(k => m.includes(k)))
+            return cc;
+    }
+    return "Otro";
+};
+
+ const BANK_PARSERS = [
+    {
+        name: "Scotiabank",
+        senders: ["scotiabank", "bsc.com.do"],
+        parse: (subject, body) => {
+            const full = subject + " " + body;
+            const card = full.match(/\*{2,4}(\d{4})/i) || full.match(/Card\s+\*+(\d{4})/i);
+            const m1 = full.match(/for\s+\$([\d,]+\.?\d*)\s*(USD|DOP)\s+at\s+(.+?)\s+on\s+(?:your\s+)?(?:Scotiabank|Scotia)/i);
+            if (m1) return { amount: parseFloat(m1[1].replace(/,/g, "")), merchant: m1[3].trim().split("*")[0].trim().slice(0, 40), card4: card ? card[1] : "", currency: m1[2].toUpperCase(), bank: "Scotiabank" };
+            const m2 = full.match(/(?:authorization|autoriza).*?\$([\d,]+\.?\d*)\s*(USD|DOP|usd|dop)?.*?at\s+(.+?)\s+on\s+/i);
+            if (m2) return { amount: parseFloat(m2[1].replace(/,/g, "")), merchant: m2[3].trim().slice(0, 40), card4: card ? card[1] : "", currency: (m2[2] || "USD").toUpperCase(), bank: "Scotiabank" };
+            const m3 = full.match(/(?:compra|consumo|cargo).*?\$([\d,]+\.?\d*)\s*(USD|DOP)?.*?(?:en|at)\s+(.+?)(?:\s+(?:con|on|tarjeta)|\.|$)/im);
+            if (m3) return { amount: parseFloat(m3[1].replace(/,/g, "")), merchant: m3[3].trim().slice(0, 40), card4: card ? card[1] : "", currency: (m3[2] || (full.match(/USD/i) ? "USD" : "DOP")).toUpperCase(), bank: "Scotiabank" };
+            const amtG = full.match(/\$([\d,]+\.?\d*)\s*(USD|DOP)/i);
+            if (amtG) {
+                const merch = full.match(/at\s+(.+?)\s+on/i) || full.match(/en\s+(.+?)\s+(?:con|tarjeta)/i);
+                return { amount: parseFloat(amtG[1].replace(/,/g, "")), merchant: merch ? merch[1].trim().slice(0, 40) : "Scotiabank", card4: card ? card[1] : "", currency: amtG[2].toUpperCase(), bank: "Scotiabank" };
+            }
+            return null;
+        }
+    },
+    {
+        name: "Banco Popular",
+        senders: ["popularenlinea", "bpd.com.do", "bfrpopular", "popular.com.do", "popular"],
+        parse: (subject, body) => {
+            const full = subject + " " + body;
+            const card = full.match(/terminada en\s*(\d{4})/i) || full.match(/\*(\d{4})/i);
+            const amtUS = full.match(/US\$\s*([\d,]+\.?\d*)/i) || full.match(/USD\s*\$?\s*([\d,]+\.?\d*)/i);
+            const amtRD = full.match(/RD\$\s*([\d,]+\.?\d*)/i) || full.match(/RD\s*\$\s*([\d,]+\.?\d*)/i);
+            const amt = amtUS || amtRD;
+            if (!amt) return null;
+            const merchant = full.match(/\d{2}\/\d{2}\/\d{4}\s+(.+?)\s+Aprobada/i)
+                || full.match(/Aprobada.*?(\S+\.\S+\/\S+)/i)
+                || full.match(/(?:Comercio|comercio)[:\s]+(.+?)(?:\s+(?:Estatus|Estado|Aprobada)|\n|$)/im)
+                || full.match(/\d{2}\/\d{2}\/\d{4}\s+(.+?)(?:\s+Aprobada|\s+Rechazada|\s+Pendiente|$)/im)
+                || full.match(/(?:en|at)\s+(.+?)(?:\s+(?:por|con|tarjeta|el)|$)/im);
+            let mName = merchant ? merchant[1].trim() : "Popular";
+            mName = mName.replace(/^\s+|\s+$/g, "").replace(/\s{2,}/g, " ").slice(0, 40);
+            if (mName.length < 2) mName = "Popular";
+            return { amount: parseFloat(amt[1].replace(/,/g, "")), merchant: mName, card4: card ? card[1] : "", currency: amtUS ? "USD" : "DOP", bank: "Banco Popular" };
+        }
+    },
+    {
+        name: "BHD",
+        senders: ["bhd", "bhdleon"],
+        parse: (subject, body) => {
+            const full = subject + " " + body;
+            const card = full.match(/#\s*(\d{4})/) || full.match(/\*{2,4}(\d{4})/) || full.match(/terminada en\s*(\d{4})/i);
+            const isUSD = /\bUS\b/i.test(full) || /USD/i.test(full) || /[Dd][oó]lar/i.test(full);
+            const amtMatch = full.match(/\$([\d,]+\.?\d*)/);
+            if (!amtMatch) return null;
+            const amount = parseFloat(amtMatch[1].replace(/,/g, ""));
+            if (amount <= 0) return null;
+            const merchant = full.match(/\$[\d,.]+\s+(.+?)\s+(?:Aprobada|Rechazada|Pendiente)/i)
+                || full.match(/(?:Comercio|comercio)[:\s]+(.+?)(?:\s+(?:Estado|Aprobada)|\n|$)/im)
+                || full.match(/(\S+\.\S+\/\S+)/i);
+            let mName = merchant ? merchant[1].trim() : "BHD";
+            mName = mName.replace(/^\s+|\s+$/g, "").replace(/\s{2,}/g, " ").slice(0, 40);
+            if (mName.length < 2) mName = "BHD";
+            return { amount, merchant: mName, card4: card ? card[1] : "", currency: isUSD ? "USD" : "DOP", bank: "BHD" };
+        }
+    },
+    {
+        name: "Banreservas",
+        senders: ["banreservas"],
+        parse: (subject, body) => {
+            const full = subject + " " + body;
+            const amtRD = full.match(/RD\$\s*([\d,]+\.?\d*)/i);
+            const amtUS = full.match(/US\$\s*([\d,]+\.?\d*)/i);
+            const amt = amtUS || amtRD;
+            if (!amt) return null;
+            const card = full.match(/(?:terminada en|tarjeta|terminal|\*{3,4})\s*(\d{4})/i);
+            const merchant = full.match(/(?:comercio|establecimiento)[:\s]+(.+?)(?:\s+Aprobada|\s+RD|\s+US|\n)/i);
+            return { amount: parseFloat(amt[1].replace(/,/g, "")), merchant: merchant ? merchant[1].trim() : (subject || "").slice(0, 40), card4: card ? card[1] : "", currency: amtUS ? "USD" : "DOP", bank: "Banreservas" };
+        }
+    },
+    {
+        name: "Genérico",
+        senders: [],
+        parse: (subject, body) => {
+            const full = subject + " " + body;
+            const amtUS = full.match(/US\$\s*([\d,]+\.?\d*)/i);
+            const amtRD = full.match(/RD\$\s*([\d,]+\.?\d*)/i) || full.match(/RD\s*\$\s*([\d,]+\.?\d*)/i);
+            const amtDOP = full.match(/\$([\d,]+\.?\d*)\s*DOP/i);
+            const amtUSD = full.match(/\$([\d,]+\.?\d*)\s*USD/i);
+            const amtGeneric = full.match(/(?:monto|amount|por|total)[:\s]*\$?\s*([\d,]+\.?\d*)/i);
+            const amt = amtUSD || amtUS || amtDOP || amtRD || amtGeneric;
+            if (!amt) return null;
+            const isUSD = !!(amtUSD || amtUS);
+            const card = full.match(/(?:terminada en|tarjeta|terminal|card|\*{2,4})\s*(\d{4})/i) || full.match(/\*(\d{4})/);
+            const merchant = full.match(/(?:comercio|establecimiento|merchant|at)[:\s]+(.+?)(?:\s+on\s+|\s+Aprobada|\s+por\s+|\s+monto|\n|\r|$)/i)
+                || full.match(/(?:consumo|compra|cargo|transacci).*?(?:en|at)[:\s]+(.+?)(?:\s+por|\s+RD|\s+US|\s+monto|\n|$)/i)
+                || full.match(/(?:descripci[oó]n|concepto|detalle)[:\s]+(.+?)(?:\n|\r|$)/i);
+            const isBankEmail = /consumo|compra|cargo|transacci|authorization|purchase|used|aprobad|debito|retiro|alerta|notific|autoriza|cr[eé]dito|d[eé]bito|transferencia/i.test(full);
+            if (!isBankEmail) return null;
+            let mName = merchant ? merchant[1].trim().slice(0, 40) : (subject || "").replace(/^(Re:|Fw:|Fwd:)\s*/i, "").slice(0, 40).trim();
+            mName = mName.replace(/^(?:comercio|establecimiento|en)\s*[:.]?\s*/i, "").replace(/\s+por\s+(?:RD|US)\$.*/i, "").replace(/\s+tarjeta\s+\*{2,}\d{4}.*/i, "").replace(/\s{2,}/g, " ").trim();
+            if (!mName || mName.length < 2) mName = "Transacción bancaria";
+            return { amount: parseFloat(amt[1].replace(/,/g, "")), merchant: mName, card4: card ? card[1] : "", currency: isUSD ? "USD" : "DOP", bank: "Otro" };
+        }
+    }
+];
+function parseEmailForTransaction(subject, body, from) {
+    const fromLower = (from || "").toLowerCase();
+    const marketingSenders = ["mercadeo@", "mercadeo.", "marketing@", "info@bhd", "info@scotiabank", "comunicaciones@", "promo@", "contacto@", "crm@", "campanas@", "digital@", "en contacto"];
+    if (marketingSenders.some(ms => fromLower.includes(ms))) return null;
+    const fullLower = (subject + " " + body).toLowerCase();
+    const promoWords = ["promocion", "oferta especial", "beneficio exclusivo", "descuento", "puntos de", "millas", "sorteo", "ganaste", "campana", "newsletter", "boletin", "encuesta", "opinion", "afiliacion", "pre-aprobado", "preaprobado", "aumenta tu limite", "nueva tarjeta", "invitacion", "conoce nuestros", "te invitamos", "aprovecha", "solo por hoy", "oferta valida", "aplican restricciones", "terminos y condiciones aplican", "acumula puntos", "doble puntos", "triple puntos", "cashback especial", "upgrade", "mejora tu plan", "buenos momentos", "clasico mundial", "bono de devolucion", "manage subscriptions", "unsubscribe", "update profile", "view this email as a web page", "to view this", "redes sociales", "sigue nuestras redes", "vivir la emocion", "tus tarjetas te acompañan", "disfruta de", "valido del", "del 5 al", "del 6 al", "world baseball"];
+    if (promoWords.some(pw => fullLower.includes(pw))) return null;
+    const txnSignals = ["aprobada", "authorization", "autorizada", "credit card used", "credit card present", "detalle de su transacción", "detalle de transacciones", "notificación de transacciones", "se ha realizado", "se realizó", "consumo en", "compra en", "cargo en"];
+    const hasSignal = txnSignals.some(s => fullLower.includes(s));
+    if (!hasSignal) return null;
+    // Guard central: nunca aceptar montos 0/negativos/NaN de ningún parser (evita txns de RD$0)
+    const _validTxn = r => r && Number.isFinite(r.amount) && r.amount > 0 ? r : null;
+    for (const parser of BANK_PARSERS) {
+        if (parser.senders.length > 0 && parser.senders.some(s => fromLower.includes(s))) {
+            const result = _validTxn(parser.parse(subject, body));
+            if (result) return result;
+        }
+    }
+    for (const parser of BANK_PARSERS) {
+        const result = _validTxn(parser.parse(subject, body));
+        if (result) return result;
+    }
+    return null;
+}
+
+ /* --- estado (mismas claves que la app anterior + copia en la nube vía extra.email) --- */
+ const LS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v;}catch{return d;}};
+ const LSset=(k,v)=>{try{localStorage.setItem(k,v);}catch{}};
+ const LSdel=k=>{try{localStorage.removeItem(k);}catch{}};
+ const X=window.moneiExtra=window.moneiExtra||{};
+ const em=()=>{X.email=X.email||{};const e=X.email;if(!Array.isArray(e.importedIds)){try{e.importedIds=JSON.parse(LS('omnios-imported-msgs','[]'));}catch{e.importedIds=[];}}if(!Array.isArray(e.senders)){try{e.senders=JSON.parse(LS('omnios-custom-senders','[]'));}catch{e.senders=[];}}if(!e.syncDays)e.syncDays=7;if(!e.autoCatMap)e.autoCatMap={};if(e.lastSync===undefined)e.lastSync=LS('omnios-last-sync','');if(!e.clientId)e.clientId=LS('omnios-gmail-cid','')||GMAIL_CLIENT_ID;return e;};
+ let token=LS('omnios-gmail-token',null),gmailUser=LS('omnios-gmail-user',''),syncing=false,scanning=false,log=[],importedCount=0;
+ const persist=()=>{const e=em();LSset('omnios-imported-msgs',JSON.stringify(e.importedIds.slice(-500)));LSset('omnios-custom-senders',JSON.stringify(e.senders));LSset('omnios-last-sync',e.lastSync||'');LSset('omnios-gmail-cid',e.clientId||'');render();};
+ const markImported=id=>{const e=em();if(!e.importedIds.includes(id)){e.importedIds.push(id);if(e.importedIds.length>1500)e.importedIds=e.importedIds.slice(-1500);}};
+ const fmtDate=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+ const gfetch=(url,opt={})=>fetch(url,{...opt,headers:{Authorization:'Bearer '+token,...(opt.headers||{})}});
+ const pushLog=(t,m)=>{log.push({t,m});if(log.length>400)log.shift();};
+
+ /* --- conexión Gmail (GIS, mismo client id) --- */
+ function connectGmail(){const cid=em().clientId||GMAIL_CLIENT_ID;const go=()=>{try{const client=google.accounts.oauth2.initTokenClient({client_id:cid,scope:GMAIL_SCOPES,callback:resp=>{if(resp.error){toast('No se pudo conectar: '+resp.error);return;}if(resp.access_token){token=resp.access_token;LSset('omnios-gmail-token',token);fetchProfile();toast('Gmail conectado.');render();}},error_callback:err=>{toast(err?.type==='popup_closed'?'Se cerró la ventana de Google. Inténtalo de nuevo.':(err?.message||err?.type||'Error de autenticación'));}});client.requestAccessToken();}catch(e){toast('Error al abrir Google: '+e.message);}};
+  if(window.google?.accounts?.oauth2)return go();toast('Cargando Google…');const sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.onload=()=>setTimeout(go,300);sc.onerror=()=>toast('No se pudo cargar Google. Revisa tu conexión.');document.body.appendChild(sc);}
+ async function fetchProfile(){try{const r=await gfetch('https://www.googleapis.com/gmail/v1/users/me/profile');if(!r.ok)throw Error('expired');const d=await r.json();if(d.emailAddress){gmailUser=d.emailAddress;LSset('omnios-gmail-user',gmailUser);render();}return true;}catch{return false;}}
+ async function validateToken(){if(!token)return false;const ok=await fetchProfile();if(!ok){token=null;LSdel('omnios-gmail-token');toast('La sesión de Gmail caducó. Reconecta.');render();}return ok;}
+ function disconnectGmail(){token=null;gmailUser='';LSdel('omnios-gmail-token');LSdel('omnios-gmail-user');toast('Gmail desconectado.');render();}
+ function resetHistory(){if(!confirm('Se limpia el historial de correos procesados: el próximo sync vuelve a revisar todo (los duplicados se detectan por monto, fecha y comercio). ¿Continuar?'))return;em().importedIds=[];LSdel('omnios-imported-msgs');persist();toast('Historial limpio. El próximo sync revisa todo de nuevo.');}
+
+ /* --- categoría: reglas aprendidas → tablas → parecido con movimientos previos → Otro --- */
+ const guessCategory=merchant=>{const e=em();const prev=transactions.filter(t=>t.type==='expense').map(t=>({cat:t.category,desc:t.name}));let c=autoCat(merchant,prev,e.autoCatMap);if(!c)c=catFromMerchant(merchant,e.autoCatMap);if(!c)c='Otro';if(!categories.includes(c)){const same=categories.find(x=>x.toLowerCase()===c.toLowerCase());c=same||(categories.includes('Otro')?'Otro':categories.includes('Otros')?'Otros':categories[0]);}return c;};
+
+ /* --- sincronización (misma consulta, mismos parsers, dedup en 3 capas) --- */
+ async function syncEmails(silent=false){
+  if(!token){if(!silent)toast('Conecta Gmail primero.');return;}
+  if(syncing)return;syncing=true;log=[];importedCount=0;render();
+  const e=em();
+  try{
+   const after=new Date();after.setDate(after.getDate()-(e.syncDays||7));const afterStr=fmtDate(after).replace(/-/g,'/');
+   const all=[...DEFAULT_SENDERS,...e.senders];
+   const query=`after:${afterStr} (${all.map(x=>'from:'+x).join(' OR ')}) (Aprobada OR authorization OR autorizada OR "Credit Card used" OR "Credit Card present" OR "Notificación de Transacciones" OR "detalle de su transacción") -subject:(promocion OR oferta OR beneficio OR descuento OR puntos OR millas OR sorteo OR ganaste OR campana OR newsletter OR boletin OR encuesta OR opinion)`;
+   pushLog('🔍',`Buscando correos de ${all.length} remitentes (últimos ${e.syncDays} días)…`);render();
+   const listR=await gfetch('https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q='+encodeURIComponent(query));
+   if(listR.status===401){pushLog('🔑','Sesión de Gmail caducada. Reconecta.');token=null;LSdel('omnios-gmail-token');syncing=false;render();return;}
+   const listD=await listR.json();
+   if(!listD.messages||!listD.messages.length){pushLog('📭','No se encontraron notificaciones bancarias.');syncing=false;e.lastSync=new Date().toISOString();persist();return;}
+   pushLog('📧',`${listD.messages.length} correos encontrados, procesando…`);render();
+   const existingKeys=new Set(transactions.map(t=>`${t.date}|${t.dop/100}|${(t.name||'').toLowerCase().slice(0,8)}`));
+   const imported=[];let ok=0,fail=0;
+   for(const msg of listD.messages){
+    try{
+     if(e.importedIds.includes(msg.id)||transactions.some(t=>t.gmailMsgId===msg.id)){continue;}
+     const mr=await gfetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`);const md=await mr.json();
+     const headers=md.payload?.headers||[];const H=n=>headers.find(h=>h.name.toLowerCase()===n)?.value||'';
+     const subject=H('subject'),from=H('from'),dateH=H('date');
+     let body='';const ep=p=>{try{if(p.body?.data){const d=atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));body+=p.mimeType==='text/html'?d.replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&#\d+;/g,'').replace(/\s+/g,' '):d;}}catch{}(p.parts||[]).forEach(ep);};ep(md.payload||{});
+     const result=parseEmailForTransaction(subject,body,from);
+     if(!result){fail++;pushLog('⚠️',`No reconocido: "${subject.slice(0,70)}" · de ${from.slice(0,40)}`);render();continue;}
+     const pd=new Date(dateH);const emailDate=dateH&&!isNaN(pd)?fmtDate(pd):today;
+     const usedRate=rates.USD||58.5;const isUSD=result.currency==='USD';const rdAmt=isUSD?Math.round(result.amount*usedRate):result.amount;
+     const fullTxt=(subject+' '+body).toLowerCase();
+     if(["pago de tarjeta","pago a tarjeta","abono a tarjeta","pago tc","pago automatico de tarjeta","automatic payment","pago de credito","credit card payment"].some(k=>fullTxt.includes(k))){pushLog('💳',`Pago de tarjeta omitido: ${result.merchant} · ${money(Math.round(rdAmt*100))}`);markImported(msg.id);render();continue;}
+     const key=`${emailDate}|${rdAmt}|${result.merchant.toLowerCase().slice(0,8)}`;
+     if(existingKeys.has(key)){pushLog('⏭️',`Duplicado: ${result.merchant} · ${money(Math.round(rdAmt*100))}`);markImported(msg.id);render();continue;}
+     existingKeys.add(key);
+     const cat=guessCategory(result.merchant);
+     const t={id:uid(),type:'expense',name:result.merchant,native:Math.round((isUSD?result.amount:rdAmt)*100),dop:Math.round(rdAmt*100),currency:isUSD?'USD':'DOP',rate:isUSD?usedRate:1,date:emailDate,category:cat,person:'shared',account:'',source:'email',gmailMsgId:msg.id,bank:result.bank,...(result.card4?{card4:result.card4}:{})};
+     imported.push(t);markImported(msg.id);ok++;
+     pushLog('✅',`${result.bank}: ${result.merchant} · ${isUSD?'US$'+result.amount+' → '+money(t.dop)+' @'+usedRate:money(t.dop)} → ${cat}`);render();
+    }catch(err){pushLog('⚠️','Error procesando un correo: '+String(err.message||err).slice(0,60));}
+   }
+   if(imported.length){transactions=[...imported,...transactions];importedCount=imported.length;pushLog('📊',`${ok} importados · ${fail} no reconocidos`);toast(`${imported.length} ${imported.length===1?'gasto importado':'gastos importados'} del correo.`);}
+   else{pushLog('📭',`No hay movimientos nuevos (${fail} no reconocidos).`);if(!silent)toast('No hay movimientos nuevos.');}
+   e.lastSync=new Date().toISOString();
+  }catch(err){pushLog('❌','Error: '+(err.message||err));}
+  syncing=false;persist();
+ }
+ /* --- auto-detectar remitentes (igual que antes) --- */
+ async function scanBanks(){if(!token||scanning)return;scanning=true;render();const found=new Set(),all=new Set();const bank=["popular","scotiabank","bhd","bhdleon","banreservas","promerica","lafise","bancamerica","citibank","hsbc","chase","bankofamerica","visa","mastercard","amex","americanexpress","bpd.com","bfrpopular","banco","bank","financ","credit","card","alert","notific","seguro","ars "];
+  try{const r=await gfetch('https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q='+encodeURIComponent('(consumo OR compra OR cargo OR transaccion OR debito OR authorization OR transferencia OR alerta OR notificacion) newer_than:90d'));if(r.ok){const d=await r.json();for(const m of (d.messages||[]).slice(0,50)){try{const mr=await gfetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From`);if(!mr.ok)continue;const md=await mr.json();const from=md.payload?.headers?.find(h=>h.name.toLowerCase()==='from')?.value||'';const em_=from.match(/<(.+?)>/)||from.match(/([\w.-]+@[\w.-]+)/);const dom=em_&&em_[1].split('@')[1];if(dom){all.add(dom);if(bank.some(b=>dom.includes(b)))found.add(dom);}}catch{}}}}catch{}
+  const e=em();const nuevos=[...found].filter(d=>!e.senders.includes(d));if(nuevos.length){e.senders=[...e.senders,...nuevos];toast(nuevos.length+' dominios detectados y agregados.');}else if(found.size)toast('Todos los dominios ya están configurados.');else if(all.size)toast('Dominios vistos: '+[...all].filter(d=>!e.senders.includes(d)).slice(0,5).join(', ')+'. Agrega los de tu banco.');else toast('No se encontraron correos bancarios en 90 días.');scanning=false;persist();}
+
+ /* --- aprender categoría al editar un gasto importado --- */
+ let editingId=null;const tfBefore=transactionForm;transactionForm=function(type,id,draft){editingId=id||null;tfBefore(type,id,draft);};
+ const formBeforeEmail=form;form=function(html,onSave,button){formBeforeEmail(html,v=>{const orig=editingId&&transactions.find(t=>t.id===editingId);const learn=orig&&orig.source==='email'&&v.category&&v.category!==orig.category?orig:null;onSave(v);if(learn){const words=(learn.name||'').toLowerCase().replace(/[^a-záéíóúñü0-9\s]/gi,'').split(/\s+/).filter(w=>w.length>=3);const stop=["con","del","los","las","para","por","una","que","compra","consumo","pago","tarjeta","the","and","inc","com"];const kw=words.find(w=>!stop.includes(w));if(kw){em().autoCatMap[kw]=v.category;persist();toast('Aprendido: «'+kw+'» → '+v.category+'.');}}},button);};
+
+ /* --- la tarjeta "presupuesto de cada uno" ES la Mesada de esa persona (Jorge 9-sep) --- */
+ const psBeforeMesada=personalStatus;
+ personalStatus=function(id,period=month){const pb=window.moneiTypeBudget.personBudget(id);if(pb){const spent=transactions.filter(t=>t.type==='expense'&&t.date.startsWith(period)&&assignedBudget(t)?.id===pb.id).reduce((n,t)=>n+t.dop,0);return allowanceStatus(pb.limit,spent);}return psBeforeMesada(id,period);};
+ const plBefore=actions['personal-limit'];actions['personal-limit']=id=>{const pb=window.moneiTypeBudget.personBudget(id);if(pb)budgetForm(pb.id);else plBefore(id);};
+
+ /* --- vista --- */
+ const gmailLogo=()=>'<svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.3 2-1.6 5-4.6 7l7 5.4c4.2-3.9 6.6-9.6 6.6-15.7z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.6-5.4l-7-5.4c-1.9 1.3-4.5 2.2-7.6 2.2-5.9 0-10.8-4-12.6-9.3l-7.3 5.6C7.6 41 15.2 46 24 46z"/><path fill="#FBBC05" d="M11.4 28.1c-.5-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-7.3-5.6C2.7 17.1 2 20.4 2 24s.7 6.9 2.1 9.7l7.3-5.6z"/><path fill="#EA4335" d="M24 10.6c3.3 0 5.6 1.4 6.9 2.6l6.2-6.1C33.5 3.7 29.3 2 24 2 15.2 2 7.6 7 4.1 14.3l7.3 5.6c1.8-5.3 6.7-9.3 12.6-9.3z"/></svg>';
+ const fmtSync=iso=>{if(!iso)return 'Nunca';const d=new Date(iso);return isNaN(d)?'—':d.toLocaleString('es-DO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});};
+ views.email=()=>{const e=em();const emails=sorted().filter(t=>t.source==='email').slice(0,40);
+  const status=token?`<div class="rows sync-status"><div class="row"><span class="row-icon">${icon('email')}</span><span class="row-main"><b>${esc(gmailUser||'Gmail conectado')}</b><span class="sub">Última sincronización: ${esc(fmtSync(e.lastSync))}</span></span></div></div><div class="sync-actions"><button class="primary" data-action="gmail-sync" ${syncing?'disabled':''}>${syncing?'Sincronizando…':'Sincronizar ahora'}</button></div><p class="sub">Período de búsqueda</p><div class="sync-period" role="group" aria-label="Período">${[3,7,15,30].map(d=>`<button type="button" data-action="gmail-days" data-id="${d}" aria-pressed="${e.syncDays===d}">${d} días</button>`).join('')}</div><div class="rows settings-rows" style="margin-top:16px"><button class="row settings-row" data-action="gmail-reset"><span class="row-main"><b>Reiniciar historial</b><span class="sub">El próximo sync vuelve a revisar todos los correos del período</span></span>${icon('arrow')}</button><button class="row settings-row" data-action="gmail-disconnect"><span class="row-main"><b>Desconectar Gmail</b><span class="sub">Quita el acceso de lectura en este dispositivo</span></span>${icon('close')}</button></div>`
+   :`<div class="gmail-card"><div class="gmail-mark">${gmailLogo()}</div><h2>Conecta tu correo</h2><p>Importa automáticamente los consumos de tus tarjetas desde las notificaciones del banco (solo lectura).</p><button class="gmail-connect" data-action="gmail-connect">${gmailLogo()}<span>Conectar Gmail</span></button><div class="gmail-feedback" role="status">Última sincronización: ${esc(fmtSync(e.lastSync))}</div></div>`;
+  const logHtml=log.length?`${section('Registro de sync')}<div class="rows sync-log">${log.map(l=>`<div class="row"><span class="row-icon">${l.t}</span><span class="row-main"><span class="sub">${esc(l.m)}</span></span></div>`).join('')}</div>`:'';
+  const importedHtml=`${section('Importados del correo')}${emails.length?dayGroups(emails):'<p class="sub">Aún no hay movimientos importados del correo.</p>'}`;
+  const senders=`${section('Remitentes bancarios')}<p class="sub">El sync busca correos de estos remitentes. Los bancos principales ya están incluidos.</p><div class="sender-chips">${DEFAULT_BANKS.map(b=>`<span>${b}</span>`).join('')}</div>${e.senders.length?`<div class="rows">${e.senders.map((x,i)=>`<div class="row"><span class="row-main"><b>${esc(x)}</b><span class="sub">Agregado por ti</span></span><button class="link" data-action="gmail-sender-remove" data-id="${i}" aria-label="Quitar ${esc(x)}">Quitar</button></div>`).join('')}</div>`:''}<div class="sender-add"><input id="new-sender" type="text" inputmode="url" placeholder="dominio.com (ej: mibank.com.do)" aria-label="Nuevo dominio"><button class="secondary" data-action="gmail-sender-add">Agregar</button></div>${token?`<button class="secondary full" style="margin-top:10px" data-action="gmail-scan" ${scanning?'disabled':''}>${scanning?'Escaneando tu correo…':'Auto-detectar mis bancos'}</button>`:''}`;
+  const advanced=`<details class="entry-details" style="margin-top:22px"><summary>Configuración avanzada <span>Client ID de Google</span></summary><p class="sub" style="margin-top:10px">Si quieres usar tu propio proyecto de Google Cloud con la API de Gmail, pega aquí su Client ID. Si no, se usa el de Monei.</p><div class="cid-row"><input id="gmail-cid" type="text" value="${esc(e.clientId||'')}" aria-label="Client ID" placeholder="xxxx.apps.googleusercontent.com"><button class="secondary" data-action="gmail-cid-save">Guardar</button></div></details>`;
+  return `${heading('Email Sync','Tus consumos de tarjeta, desde las notificaciones del banco.')}${status}${logHtml}${importedHtml}${senders}${advanced}`;};
+ actions['gmail-connect']=connectGmail;actions['gmail-sync']=()=>syncEmails(false);actions['gmail-disconnect']=disconnectGmail;actions['gmail-reset']=resetHistory;actions['gmail-scan']=scanBanks;
+ actions['gmail-days']=d=>{em().syncDays=Number(d)||7;persist();};
+ actions['gmail-sender-add']=()=>{const inp=$('#new-sender');const v=(inp?.value||'').trim().toLowerCase().replace(/^.*@/,'');if(!v)return;const e=em();if(e.senders.includes(v)){toast('Ese dominio ya está.');return;}e.senders=[...e.senders,v];persist();toast('Dominio agregado.');};
+ actions['gmail-sender-remove']=i=>{const e=em();e.senders=e.senders.filter((_,j)=>String(j)!==String(i));persist();};
+ actions['gmail-cid-save']=()=>{const v=($('#gmail-cid')?.value||'').trim();em().clientId=v||GMAIL_CLIENT_ID;persist();toast('Client ID guardado.');};
+ // sync automático al abrir (como el botón de Inicio de la app anterior): si hay token y la última fue hace más de 6 h
+ setTimeout(async()=>{if(!token)return;if(!(await validateToken()))return;const last=Date.parse(em().lastSync||0)||0;if(Date.now()-last>6*3600*1000)syncEmails(true);},5000);
+ window.moneiEmail={sync:syncEmails,parse:parseEmailForTransaction,guess:guessCategory,state:em};
 })();
 </script></body></html>
