@@ -994,7 +994,7 @@ let selectedPerson='me',movementPerson='all',detailPerson='all';
 const personOf=t=>people.some(p=>p.id===t.person)?t.person:'unassigned';
 const personName=id=>people.find(p=>p.id===id)?.name||'Sin asignar';
 const personOptions=()=>people.map(p=>[p.id,p.name]);
-const personField=(id='me')=>`<div class="person-field">${select('Quién hizo el gasto','person',personOptions(),id)}<p>Compartido se cuenta una sola vez, separado de los gastos individuales.</p></div>`;
+const personField=(id='me')=>`<div class="person-field">${select('Quién hizo el gasto','person',personOptions(),id)}<p>Jorge o Heiry: sale de su Mesada. Compartido: gasto del hogar, va al presupuesto de su tipo.</p></div>`;
 // Explicitly invented assignments for the same fictitious preview dataset.
 transactions.filter(t=>t.type==='expense').forEach((t,i)=>t.person=['partner','me','partner','me','me','shared','shared','me'][i]||'unassigned');
 recurring.forEach(r=>r.person=r.category==='Servicios'?'shared':'me');
@@ -1337,7 +1337,7 @@ if(location.protocol==='file:'){
  const budgetById=id=>budgets.find(b=>b.id===id);
  const personBudget=pid=>{if(pid!=='me'&&pid!=='partner')return null;const p=people.find(x=>x.id===pid);if(!p)return null;const nm=String(p.name||'').trim().toLowerCase();if(!nm)return null;return budgets.find(b=>String(b.persona||'').trim().toLowerCase()===nm)||budgets.find(b=>String(b.category||'').trim().toLowerCase()==='mesada '+nm)||null;};const mapKey=(type,pid)=>(pid==='me'||pid==='partner')?type+'@'+pid:type;const resolveBudgetId=(type,pid)=>{const personal=pid==='me'||pid==='partner';const m=typeBudgetMap[mapKey(type,pid)];if(m==='none')return null;if(m&&budgetById(m))return m;if(personal){const pb=personBudget(pid);if(pb)return pb.id;}return budgets.find(b=>b.category===type)?.id??budgets.find(b=>/^otr[oa]s?$/i.test(String(b.category).trim()))?.id??null;};
  const resolvedName=type=>{const id=resolveBudgetId(type);return id?budgetById(id).category:null;};
- window.moneiTypeBudget={map:typeBudgetMap,resolve:resolveBudgetId,personBudget,mapKey};
+ const ownerOfBudget=b=>!b?null:(['me','partner'].find(pid=>personBudget(pid)?.id===b.id)||null);window.moneiTypeBudget={map:typeBudgetMap,resolve:resolveBudgetId,personBudget,mapKey,ownerOfBudget};
  assignedBudget=function(t){if(t.budgetId!==undefined)return t.budgetId===null?undefined:budgetById(t.budgetId);const id=resolveBudgetId(t.category,t.person);return id?budgetById(id):undefined;};
 
  /* --- estado en el dispositivo --- */
@@ -1371,8 +1371,12 @@ if(location.protocol==='file:'){
  };
  function preSave(v,ctx){
   if(!('budget_assignment' in v)||!v.category)return;
-  const chosen=v.budget_assignment;if(chosen==='auto')return;
-  const want=chosen===''?null:chosen,resolved=resolveBudgetId(v.category,v.person);
+  const chosen=v.budget_assignment;const want=chosen===''?null:chosen;
+  let pid=v.person||'shared';if(pid==='unassigned')pid='shared';
+  if(chosen!=='auto'&&want){const owner=ownerOfBudget(budgetById(want));pid=owner||'shared';}
+  v.person=pid;
+  if(chosen==='auto')return;
+  const resolved=resolveBudgetId(v.category,pid);
   if(want===resolved){v.budget_assignment='auto';return;}
   if(v.remember_budget==='on'){typeBudgetMap[mapKey(v.category,v.person)]=want??'none';v.budget_assignment='auto';ctx.learned={type:v.category+((v.person==='me'||v.person==='partner')?' de '+personName(v.person):''),name:want?budgetById(want)?.category:null};}
  }
@@ -1401,7 +1405,7 @@ if(location.protocol==='file:'){
    if(differs)text.innerHTML='Recordar: los gastos de <b>'+esc(type)+'</b>'+((pid==='me'||pid==='partner')?' de <b>'+esc(personName(pid))+'</b>':'')+' irán siempre a <b>'+esc(b?b.category:'ningún presupuesto')+'</b>. Desmarca para que sea solo este gasto.';
   };
   cat.addEventListener('change',()=>{assign.value='auto';refresh();});
-  assign.addEventListener('change',refresh);
+  assign.addEventListener('change',()=>{const ps=$('#f-person');if(ps){const v=assign.value;const b=v&&v!=='auto'?budgetById(v):null;const owner=ownerOfBudget(b);if(owner)ps.value=owner;else if(v!=='auto'&&v!==''&&(ps.value==='me'||ps.value==='partner'))ps.value='shared';}refresh();});
   $('#f-person')?.addEventListener('change',()=>{assign.value='auto';refresh();});
   refresh();
   sheetBaseline=formSignature();
@@ -1821,6 +1825,13 @@ function parseEmailForTransaction(subject, body, from) {
  /* --- aprender categoría al editar un gasto importado --- */
  let editingId=null;const tfBefore=transactionForm;transactionForm=function(type,id,draft){editingId=id||null;tfBefore(type,id,draft);};
  const formBeforeEmail=form;form=function(html,onSave,button){formBeforeEmail(html,v=>{const orig=editingId&&transactions.find(t=>t.id===editingId);const learn=orig&&orig.source==='email'&&v.category&&v.category!==orig.category?orig:null;onSave(v);if(learn){const words=(learn.name||'').toLowerCase().replace(/[^a-záéíóúñü0-9\s]/gi,'').split(/\s+/).filter(w=>w.length>=3);const stop=["con","del","los","las","para","por","una","que","compra","consumo","pago","tarjeta","the","and","inc","com"];const kw=words.find(w=>!stop.includes(w));if(kw){em().autoCatMap[kw]=v.category;persist();toast('Aprendido: «'+kw+'» → '+v.category+'.');}}},button);};
+
+ /* --- coherencia persona ⇔ Mesada en los datos (al cargar, importar y en cada render) --- */
+ const ownerOfCategory=cat=>['me','partner'].find(pid=>{const pb=window.moneiTypeBudget.personBudget(pid);return pb&&String(pb.category).trim().toLowerCase()===String(cat||'').trim().toLowerCase();})||null;
+ function coherence(){let changed=0;for(const t of transactions){if(t.type!=='expense')continue;const b=t.budgetId?budgets.find(x=>x.id===t.budgetId):null;const owner=window.moneiTypeBudget.ownerOfBudget(b)||ownerOfCategory(t.category);let want=t.person;if(owner)want=owner;else if(b&&(t.person==='me'||t.person==='partner'))want='shared';else if(!t.person||t.person==='unassigned')want='shared';if(want!==t.person){t.person=want;changed++;}}return changed;}
+ const ui=people.findIndex(p=>p.id==='unassigned');if(ui>=0)people.splice(ui,1);
+ const renderBeforeCoherence=render;render=function(){try{coherence();}catch(e){console.warn(e);}renderBeforeCoherence();};
+ window.moneiCoherence=coherence;
 
  /* --- la tarjeta "presupuesto de cada uno" ES la Mesada de esa persona (Jorge 9-sep) --- */
  const psBeforeMesada=personalStatus;
