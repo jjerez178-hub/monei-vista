@@ -850,16 +850,12 @@ const cents=n=>Math.round(Number(n)*100), money=(n,c='DOP')=>({DOP:'RD$',USD:'US
 const uid=()=>crypto.randomUUID(), round=n=>Math.round(n), today=(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date());
 // All sample values belong to this isolated in-memory prototype. No production reads or writes.
 const rates={DOP:1,USD:58.5,EUR:64};
-const accounts=[{id:'bank',name:'Cuenta principal',type:'checking',currency:'DOP',opening:cents(85000)},{id:'cash',name:'Efectivo',type:'cash',currency:'DOP',opening:cents(10000)},{id:'usd',name:'Ahorro en dólares',type:'savings',currency:'USD',opening:cents(2400)},{id:'card',name:'Tarjeta personal',type:'credit',currency:'DOP',opening:-cents(12400),limit:cents(100000),cut:15,due:10}];
+const accounts=[];
 let transactions=[];
 function seed(name,amount,category,date,account='bank',type='expense'){transactions.push({id:uid(),name,native:cents(amount),dop:cents(amount),currency:'DOP',rate:1,category,date,account,type});}
-seed('Nómina quincenal',105000,'Nómina','2026-09-04','bank','income');seed('Ingreso profesional',105000,'Servicios','2026-09-01','bank','income');
-seed('Supermercado Nacional',15350,'Supermercado','2026-09-02');seed('Supermercado Nacional',2850,'Supermercado','2026-09-05');seed('Restaurantes de la semana',5400,'Restaurantes','2026-09-03');seed('Café y comida',1000,'Restaurantes','2026-09-05','cash');seed('Combustible',3200,'Transporte','2026-09-04','card');seed('Alquiler',48000,'Vivienda','2026-09-01');seed('Internet y electricidad',5100,'Servicios','2026-09-02');seed('Suscripción digital',650,'Suscripciones','2026-09-03');
-let budgets=[{id:uid(),category:'Supermercado',limit:cents(25000)},{id:uid(),category:'Restaurantes',limit:cents(10000)},{id:uid(),category:'Transporte',limit:cents(8000)},{id:uid(),category:'Vivienda',limit:cents(50000)},{id:uid(),category:'Servicios',limit:cents(10000)},{id:uid(),category:'Suscripciones',limit:cents(2000)},{id:uid(),category:'Otros',limit:cents(15000)}];
-let goals=[{id:uid(),name:'Fondo de emergencia',target:cents(300000),saved:cents(180000)}];
-let recurring=[{id:uid(),name:'Internet',amount:cents(2400),day:12,category:'Servicios',active:true},{id:uid(),name:'Suscripción digital',amount:cents(650),day:3,category:'Suscripciones',active:true}];
-transactions.find(t=>t.name==='Suscripción digital').recurringKey=recurring[1].id+'-2026-09';
-transactions.find(t=>t.name==='Internet y electricidad').name='Electricidad y mantenimiento';
+let budgets=[];
+let goals=[];
+let recurring=[];
 const categories=['Supermercado','Restaurantes','Transporte','Vivienda','Servicios','Suscripciones','Salud','Entretenimiento','Otros'];
 let route='home',month=today.slice(0,7),filter='all',query='',planTab='budgets',theme='marea';const scrolls={};let toastTimer;
 const currentTx=()=>transactions.filter(t=>t.date.startsWith(month));
@@ -1152,7 +1148,7 @@ render();
 </script><script>
 /* household.js */
 // Monthly personal allowances are independent of category budgets. All amounts are cents.
-const personalLimits={'2026-09':{me:cents(30000),partner:cents(30000),shared:cents(60000)}};
+const personalLimits={};
 const widgetNames={overview:'Resumen del mes',people:'Presupuesto por persona',categories:'Gráfico de categorías',budgets:'Presupuestos',activity:'Movimientos por día',daily:'Gastos por día',allocation:'Distribución del presupuesto',comparison:'Gasto frente al presupuesto',income:'Fuentes de ingreso'};
 const defaultDashboard=()=>({order:['overview','people','daily','allocation','categories','comparison','budgets','income','activity'],hidden:[]});
 let dashboard=defaultDashboard();
@@ -1307,7 +1303,7 @@ if(location.protocol==='file:'){
 /* learn.js (9-sep-2026): tipo de gasto → presupuesto con memoria; todo el estado vive en el dispositivo. */
 'use strict';
 (()=>{
- const STATE_KEY='monei-state-v1';
+ const STATE_KEY='monei-state-v2';
  const typeBudgetMap={};
  let resetting=false,lastSaved='';
  const budgetById=id=>budgets.find(b=>b.id===id);
