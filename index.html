@@ -716,6 +716,30 @@ html.no-popover #quick-menu.pf-open{opacity:1;transform:none}
 .sender-add input,.cid-row input{min-height:46px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:16px;background:var(--surface);color:var(--text);width:100%}
 .cid-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
 .gmail-card .primary{width:100%;min-height:48px;margin-top:6px}
+/* ===== Pop-ups más grandes (Jorge 9-sep): la hoja ocupa casi toda la pantalla y el cuerpo hace scroll ===== */
+#sheet{width:min(560px,calc(100vw - 24px));min-height:min(70vh,760px)}
+#inspector{width:min(680px,calc(100vw - 24px))}
+@media(max-width:720px){
+ #sheet,#sheet[open]{margin:auto auto 6px;width:calc(100vw - 12px);height:calc(var(--view-height) - 12px);max-height:calc(var(--view-height) - 12px);min-height:0}
+ #inspector,#inspector[open]{margin:auto auto 6px;width:calc(100vw - 12px);height:calc(var(--view-height) - 12px);max-height:calc(var(--view-height) - 12px)}
+ #sheet-body{padding:22px 20px 28px}
+ .focused-entry .amount-input{font-size:50px!important;min-height:72px}
+ form input,form select,.focused-entry #f-name{min-height:50px;font-size:17px}
+ form label{font-size:13px;margin-top:20px}
+ .form-actions button{min-height:52px;font-size:15px}
+ .sheet-head h2{font-size:24px}
+}
+/* ===== Pie de presupuesto: gastado vs. planificado ===== */
+.pie-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+.pie-center b{font-size:19px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.pie-center span{font-size:11px;color:var(--muted);margin-top:2px}
+.pie-wrap{position:relative;width:100%;max-width:240px;justify-self:center}
+.pie-legend .legend-bar{grid-column:1/-1;height:5px;border-radius:9px;background:var(--soft);overflow:hidden;margin:6px 0 2px}
+.pie-legend .legend-bar i{display:block;height:100%;border-radius:9px;background:var(--fill)}
+.pie-legend .legend-bar i.over{background:#b5675c}
+.pie-legend button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px 9px;min-height:64px}
+.pie-legend button>span:nth-child(2){grid-column:2}
+.pie-legend b{white-space:normal;text-align:right}
 </style></head><body><script>
 /* oauth hash (9-sep-2026): Supabase vuelve con #access_token=…; se guarda y se limpia antes de que el router lo lea */
 try{if(location.hash.indexOf('access_token=')>=0){sessionStorage.setItem('sb-hash',location.hash.slice(1));history.replaceState(null,'',location.pathname+'#home');}}catch(e){}
@@ -1837,6 +1861,20 @@ function parseEmailForTransaction(subject, body, from) {
  const psBeforeMesada=personalStatus;
  personalStatus=function(id,period=month){const pb=window.moneiTypeBudget.personBudget(id);if(pb){const spent=transactions.filter(t=>t.type==='expense'&&t.date.startsWith(period)&&assignedBudget(t)?.id===pb.id).reduce((n,t)=>n+t.dop,0);return allowanceStatus(pb.limit,spent);}return psBeforeMesada(id,period);};
  const plBefore=actions['personal-limit'];actions['personal-limit']=id=>{const pb=window.moneiTypeBudget.personBudget(id);if(pb)budgetForm(pb.id);else plBefore(id);};
+
+ /* --- pie de presupuesto: cada porción es el plan; la parte llena es lo gastado (se recalcula en cada render) --- */
+ const arcPath=(a0,a1,rOut,rIn)=>{const P=(r,a)=>[120+r*Math.cos(a),120+r*Math.sin(a)];const big=a1-a0>Math.PI?1:0;const [x0,y0]=P(rOut,a0),[x1,y1]=P(rOut,a1),[x2,y2]=P(rIn,a1),[x3,y3]=P(rIn,a0);return `M${x0} ${y0} A${rOut} ${rOut} 0 ${big} 1 ${x1} ${y1} L${x2} ${y2} A${rIn} ${rIn} 0 ${big} 0 ${x3} ${y3} Z`;};
+ budgetPie=function(){
+  const data=budgets.filter(b=>b.limit>0),total=data.reduce((s,b)=>s+b.limit,0);
+  if(!total)return `<div class="chart-empty"><p>Aún no tienes presupuesto para distribuir.</p><button class="secondary" data-action="budget">Crear presupuesto</button></div>`;
+  const spentBy=new Map(data.map(b=>[b.id,budgetSpend(b)]));const spentTotal=[...spentBy.values()].reduce((s,n)=>s+n,0);
+  let angle=-Math.PI/2;const R=108,RI=70,GAP=0.012;
+  const slices=data.map(b=>{const span=Math.max(0,b.limit/total*2*Math.PI-GAP);const a0=angle+GAP/2,a1=a0+span;angle+=b.limit/total*2*Math.PI;const spent=spentBy.get(b.id)||0,frac=Math.min(1,spent/b.limit),over=spent>b.limit;const col=categoryColor(b.category);const plan=`<path d="${arcPath(a0,a1,R,RI)}" fill="${col}" opacity=".32"/>`;const done=frac>0?`<path d="${arcPath(a0,a0+span*frac,R,RI)}" fill="${col}"/>`:'';const ring=over?`<path d="${arcPath(a0,a1,R+6,R+2)}" fill="#b5675c"/>`:'';return `<a href="#${budgetTarget(b.id)}" data-pie-budget="${b.id}" aria-label="Ir a ${esc(b.category)}: ${money(spent)} de ${money(b.limit)}, ${percentText(spent/b.limit*100)}">${plan}${done}${ring}<title>${esc(b.category)} · ${money(spent)} de ${money(b.limit)}</title></a>`;}).join('');
+  const pct=spentTotal/total*100;
+  return `<div class="budget-pie-layout"><div class="pie-wrap"><svg class="budget-pie" viewBox="0 0 240 240" role="group" aria-label="Gastado frente a lo planificado por presupuesto">${slices}</svg><div class="pie-center"><b>${percentText(pct)}</b><span>usado</span></div></div><div class="pie-description"><span>Gastado este mes</span><strong>${money(spentTotal)}</strong><p>de ${money(total)} planificados. La parte llena de cada color es lo gastado de ese presupuesto; el borde rojizo marca los que se pasaron.</p></div></div><div class="pie-legend">${data.map(b=>{const spent=spentBy.get(b.id)||0,frac=Math.min(1,spent/b.limit),over=spent>b.limit;return `<button data-action="jump-budget" data-id="${b.id}"><span class="legend-dot" style="background:${categoryColor(b.category)}"></span><span>${esc(b.category)}</span><b>${money(spent)}<small>de ${money(b.limit)} · ${percentText(spent/b.limit*100)}</small></b><span class="legend-bar"><i class="${over?'over':''}" style="width:${(frac*100).toFixed(1)}%"></i></span></button>`;}).join('')}</div>`;
+ };
+ /* en pantallas táctiles no se abre el teclado solo al abrir la hoja: la hoja se ve entera primero */
+ const formBeforeTouch=form;form=function(html,onSave,button){formBeforeTouch(html,onSave,button);if(matchMedia('(pointer:coarse)').matches)setTimeout(()=>{const a=document.activeElement;if(a&&a.closest&&a.closest('#form'))a.blur();},0);};
 
  /* --- vista --- */
  const gmailLogo=()=>'<svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.3 2-1.6 5-4.6 7l7 5.4c4.2-3.9 6.6-9.6 6.6-15.7z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.6-5.4l-7-5.4c-1.9 1.3-4.5 2.2-7.6 2.2-5.9 0-10.8-4-12.6-9.3l-7.3 5.6C7.6 41 15.2 46 24 46z"/><path fill="#FBBC05" d="M11.4 28.1c-.5-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-7.3-5.6C2.7 17.1 2 20.4 2 24s.7 6.9 2.1 9.7l7.3-5.6z"/><path fill="#EA4335" d="M24 10.6c3.3 0 5.6 1.4 6.9 2.6l6.2-6.1C33.5 3.7 29.3 2 24 2 15.2 2 7.6 7 4.1 14.3l7.3 5.6c1.8-5.3 6.7-9.3 12.6-9.3z"/></svg>';
