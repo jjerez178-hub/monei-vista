@@ -688,7 +688,23 @@ body[data-appearance=terracota] .app,body[data-appearance=terracota] dialog,body
 .remember-budget input{margin-top:2px}
 .settings-note{margin-top:8px}
 h2.settings-h2{margin:6px 0 14px}
-</style></head><body>
+html.no-popover #quick-menu:not(.pf-open){display:none}
+html.no-popover #quick-menu.pf-open{opacity:1;transform:none}
+</style></head><body><script>
+/* compat.js (9-sep-2026): Safari/iOS antiguos. Va ANTES de todo lo demás, sin 'use strict' para poder rellenar prototipos. */
+(function(){
+ if(!Object.hasOwn)Object.defineProperty(Object,'hasOwn',{value:function(o,k){return Object.prototype.hasOwnProperty.call(Object(o),k);},configurable:true,writable:true});
+ if(window.crypto&&!crypto.randomUUID)crypto.randomUUID=function(){var b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=[].slice.call(b).map(function(x){return (x+256).toString(16).slice(1);}).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);};
+ if(!('popover' in HTMLElement.prototype)){
+  document.documentElement.classList.add('no-popover');
+  HTMLElement.prototype.showPopover=function(){this.hidden=false;this.classList.add('pf-open');this.dispatchEvent(new Event('toggle'));};
+  HTMLElement.prototype.hidePopover=function(){this.classList.remove('pf-open');this.dispatchEvent(new Event('toggle'));};
+  HTMLElement.prototype.togglePopover=function(force){var open=force===undefined?!this.classList.contains('pf-open'):!!force;open?this.showPopover():this.hidePopover();return open;};
+  Object.defineProperty(HTMLElement.prototype,'matches',{value:(function(m){return function(s){try{return m.call(this,s);}catch(e){return s.indexOf(':popover-open')>=0?this.classList.contains('pf-open'):false;}};})(HTMLElement.prototype.matches),configurable:true,writable:true});
+ }
+ window.addEventListener('error',function(e){try{var d=document.getElementById('boot-error')||document.createElement('div');d.id='boot-error';d.setAttribute('role','alert');d.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99;background:#7a2e2e;color:#fff;font:13px/1.4 system-ui,sans-serif;padding:10px 14px;white-space:pre-wrap';d.textContent='Monei no pudo arrancar: '+(e.message||e)+(e.filename?' ('+e.lineno+')':'')+'\nNavegador: '+navigator.userAgent;if(!d.parentNode)document.body.appendChild(d);}catch(_){}});
+})();
+</script>
 
 <div class="app" data-theme="marea"><header class="top"><span class="wordmark">monei<span class="edition">DEMO</span></span><button class="avatar" data-route="settings" aria-label="Abrir ajustes">JJ</button></header><div class="workspace"><div class="page-top"><div class="route-context"><button id="back" aria-label="Volver a la pantalla anterior" hidden></button><span id="breadcrumb">Tu resumen</span></div><label class="month-picker"><span class="sr">Mes</span><select id="month" aria-label="Mes"></select></label></div><main id="content" tabindex="-1"></main></div><footer class="bottom"><nav aria-label="Navegación principal"><div id="nav-indicator"></div><button data-route="home"><span>⌂</span>Inicio</button><button data-route="transactions"><span>⇄</span>Movimientos</button><button data-route="plan"><span>◴</span>Presupuesto</button><button data-route="more"><span>☷</span>Más</button></nav><button class="add" id="add" aria-label="Agregar movimiento">+</button></footer><div class="toast" role="status" hidden><span></span><button id="undo" hidden>Deshacer</button></div></div>
 <dialog id="sheet" aria-labelledby="sheet-title"><div class="sheet-handle"></div><div class="sheet-head"><h2 id="sheet-title"></h2><button id="close-sheet" aria-label="Cerrar">×</button></div><div id="sheet-body"></div><div id="discard-prompt" hidden role="alert"><b>Tienes cambios sin guardar.</b><p>Puedes seguir editando o descartarlos.</p><div><button type="button" class="secondary" id="keep-editing">Seguir editando</button><button type="button" class="primary" id="discard">Descartar</button></div></div></dialog><script>
